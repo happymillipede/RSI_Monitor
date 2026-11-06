@@ -17,6 +17,3 @@ dist/
 datos/
 config.json
 config.json.dañado
-
-# Registro del instalador de Windows
-instalacion.log

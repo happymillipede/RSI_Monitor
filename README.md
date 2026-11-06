@@ -10,14 +10,16 @@ Cuando detecta fatiga, les pide que descansen unos minutos.
 
 1. En GitHub, aprieten **Code → Download ZIP** y descomprímanlo donde quieran.
 2. Dentro de la carpeta `RSI_Monitor`, hagan doble clic en **`instalar.bat`**.
-3. Esperen unos minutos. El instalador descarga Python 3.10 y todo lo que la app necesita.
+3. Esperen unos minutos. Si falta Python 3.10, el instalador lo instala con **winget**,
+   el instalador de programas de Microsoft. Después instala lo que la app necesita.
    No pide permisos de administrador.
 4. Al terminar, la app se abre sola. Queda un acceso directo **RSI Monitor** en el
    Escritorio y en el menú Inicio.
 
 Si Windows pide confirmación ("Windows protegió su PC"), aprieten **Más información →
-Ejecutar de todas formas**. Si algo falla, el detalle queda en `instalacion.log`. Pueden volver a
-abrir `instalar.bat` sin problema: completa lo que falte.
+Ejecutar de todas formas**. Si falta winget, el instalador abre la página de Python para
+instalarlo a mano. Pueden volver a abrir `instalar.bat` sin problema: completa lo que falte.
+Para que la app se abra al encender el computador, actívenlo en **Ajustes**.
 
 No muevan la carpeta después de instalar, porque los accesos directos apuntan ahí. Si la
 mueven, vuelvan a abrir `instalar.bat`.

@@ -32,7 +32,7 @@ RSI_Monitor/
 ├─ Código_Bitalino_Python.py   el código original (no se toca)
 ├─ bitalino_codigo (Ver 3.0).ipynb, RSI_Monitor_Entrega2.pptx   originales del grupo
 ├─ app.py                      punto de entrada (argumentos, modo sin ventana)
-├─ instalar.bat, instalar.ps1  instalador de Windows
+├─ instalar.bat                instalador de Windows
 ├─ nucleo/                     lo que mide y decide; no tiene ventanas
 │  ├─ cargador_original.py     lee el original con ast
 │  ├─ regla_fatiga.py          línea base, racha y alerta
@@ -48,7 +48,7 @@ RSI_Monitor/
 │     pestana_descansos.py, dialogo_ajustes.py, bandeja.py
 ├─ sistema/autoinicio.py       iniciar con el sistema (Windows y macOS)
 ├─ recursos/                   íconos del programa
-├─ herramientas/crear_iconos.py  vuelve a crear los íconos si cambia el dibujo
+├─ herramientas/                crear_iconos.py (íconos) y crear_accesos_directos.py (instalador)
 ├─ tests/                      pruebas
 ├─ config.ejemplo.json         valores por defecto de config.json
 └─ RSI_Monitor.spec            receta para crear el .exe y la .app
@@ -164,21 +164,24 @@ base ni el CSV.
 
 ## El instalador de Windows
 
-`instalar.bat` solo abre `instalar.ps1` con PowerShell, sin la restricción de scripts.
-`instalar.ps1`:
+`instalar.bat`:
 
-1. busca un Python 3.10 de 64 bits (con `py -3.10-64`, en el PATH o en las carpetas de siempre). Si
-   no hay, descarga `python-3.10.11-amd64.exe` de python.org, compara su SHA-256 y lo
-   instala sin preguntas solo para el usuario, en `%LOCALAPPDATA%\Programs\Python\Python310`;
+1. busca un Python 3.10 de 64 bits (con `py -3.10-64` o en las carpetas de siempre). Si
+   no hay, lo instala con `winget install --id Python.Python.3.10 --scope user`. Si
+   tampoco hay winget, abre la página de Python 3.10.11;
 2. crea `.venv` (o lo vuelve a crear si no es 3.10) e instala `requirements.txt`;
-3. deja el inicio con el sistema según `config.json`, con `sistema/autoinicio.py`;
-4. crea los accesos directos a `.venv\Scripts\pythonw.exe app.py`;
-5. abre la app (`instalar.bat -SinAbrir` para no abrirla).
+3. crea los accesos directos a `.venv\Scripts\pythonw.exe app.py` con
+   `herramientas/crear_accesos_directos.py`;
+4. abre la app (`instalar.bat /sinabrir` para no abrirla).
 
-Los dos archivos llevan CRLF, y el `.ps1` lleva BOM, porque Windows PowerShell 5 lee
-sin BOM como ANSI y rompe las tildes. `.gitattributes` los guarda tal cual.
-`tests/test_instalador.py` revisa eso y el código Python que ejecuta el `.ps1`. Si
-cambia la versión de Python, hay que cambiar `VERSION_PYTHON` y `SHA256_PYTHON`.
+La primera versión era un script de PowerShell que descargaba el instalador de Python,
+lo ejecutaba en silencio y activaba el inicio con el sistema. Windows Defender lo marcó
+como troyano: hace lo mismo que muchos virus. Por eso `instalar.bat` no usa PowerShell,
+no descarga programas por su cuenta y no toca el inicio con el sistema (eso queda en
+Ajustes). Solo los accesos directos usan PowerShell, desde Python, porque Python no trae
+cómo crearlos. `tests/test_instalador.py` revisa todo eso.
+
+El `.bat` va en ASCII y con CRLF; `.gitattributes` lo guarda tal cual.
 
 ## Resultados de la simulación
 

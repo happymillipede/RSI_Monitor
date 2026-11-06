@@ -1,73 +1,97 @@
-"""Instalador de Windows: formato de los archivos y el código Python que ejecuta."""
+"""Instalador de Windows: formato de instalar.bat, lo que ejecuta y los accesos directos."""
 
+import importlib.util
 import re
+import subprocess
 
 import pytest
 
 from nucleo import rutas
-from sistema import autoinicio
 
 BAT = rutas.RAIZ_PROYECTO / "instalar.bat"
-PS1 = rutas.RAIZ_PROYECTO / "instalar.ps1"
+SCRIPT_ACCESOS = rutas.RAIZ_PROYECTO / "herramientas" / "crear_accesos_directos.py"
 
 
-def texto_ps1():
-    return PS1.read_bytes().decode("utf-8-sig")
+def texto_bat():
+    return BAT.read_bytes().decode("ascii")
 
 
-def constante_ps1(nombre):
-    """El valor de una constante de instalar.ps1 escrita como $NOMBRE = "..." o '...'."""
-    coincidencia = re.search(rf"^\${nombre} = (['\"])(.*)\1\r?$", texto_ps1(), re.MULTILINE)
-    assert coincidencia, nombre
-    return coincidencia.group(2)
+def cargar_accesos():
+    especificacion = importlib.util.spec_from_file_location("crear_accesos_directos", SCRIPT_ACCESOS)
+    modulo = importlib.util.module_from_spec(especificacion)
+    especificacion.loader.exec_module(modulo)
+    return modulo
 
 
-def test_bat_es_ascii_con_crlf_y_llama_al_ps1():
+def test_bat_es_ascii_con_crlf():
     contenido = BAT.read_bytes()
     contenido.decode("ascii")
     assert contenido.count(b"\n") == contenido.count(b"\r\n")
-    assert b'-File "%~dp0instalar.ps1"' in contenido
 
 
-def test_ps1_tiene_bom_y_crlf():
-    # Windows PowerShell 5 lee como ANSI un .ps1 sin BOM y rompe las tildes.
-    contenido = PS1.read_bytes()
-    assert contenido.startswith(b"\xef\xbb\xbf")
-    assert contenido.count(b"\n") == contenido.count(b"\r\n")
+def test_bat_no_usa_powershell_ni_descarga_programas():
+    # Lo que hacía que el antivirus lo confundiera con un virus.
+    texto = texto_bat().lower()
+    for sospechoso in ("powershell", "executionpolicy", "curl", "bitsadmin", "invoke-webrequest", "currentversion\\run"):
+        assert sospechoso not in texto
+
+
+def test_bat_usa_archivos_que_existen():
+    texto = texto_bat()
+    assert "requirements.txt" in texto
+    assert r"herramientas\crear_accesos_directos.py" in texto
+    assert SCRIPT_ACCESOS.exists()
 
 
 def test_version_de_python_coincide_con_requirements():
-    version = constante_ps1("VERSION_PYTHON")
     requisitos = (rutas.RAIZ_PROYECTO / "requirements.txt").read_text(encoding="utf-8")
-    assert f"Python {version}" in requisitos
-    assert re.fullmatch(r"[0-9A-F]{64}", constante_ps1("SHA256_PYTHON"))
-
-
-@pytest.mark.parametrize("nombre", ["CODIGO_VERSION", "CODIGO_AUTOINICIO"])
-def test_codigo_python_sin_comillas_dobles_ni_variables(nombre):
-    # Va entre comillas dobles de PowerShell: un $ se reemplazaría, y PowerShell 5
-    # corta los argumentos que llevan comillas dobles adentro.
-    codigo = constante_ps1(nombre)
-    assert "$" not in codigo and "`" not in codigo and '"' not in codigo
+    assert "Python 3.10" in requisitos
+    assert "--id Python.Python.3.10 " in texto_bat()
 
 
 def test_codigo_version_acepta_este_python():
+    codigo = re.search(r'^set "CODIGO_VERSION=(.*)"\r$', texto_bat(), re.MULTILINE).group(1)
+    assert "%" not in codigo and '"' not in codigo
     with pytest.raises(SystemExit) as salida:
-        exec(constante_ps1("CODIGO_VERSION"))
+        exec(codigo)
     assert salida.value.code == 0
 
 
-def test_codigo_autoinicio_usa_config_json(tmp_path, monkeypatch, capsys):
-    pedidos = []
-    monkeypatch.setattr(rutas, "carpeta_base", lambda: tmp_path)
-    monkeypatch.setattr(autoinicio, "aplicar", lambda activar: pedidos.append(activar))
-    exec(constante_ps1("CODIGO_AUTOINICIO"))
-    assert pedidos == [True]
-    assert capsys.readouterr().out.strip() == "activado"
-    assert (tmp_path / rutas.NOMBRE_CONFIG).exists()
-
-
 def test_comprueba_las_dependencias_de_requirements():
-    linea = re.search(r"'-c', 'import ([^']+)'", texto_ps1()).group(1)
+    linea = re.search(r'-c "import ([^"]+)"', texto_bat()).group(1)
     for modulo in linea.split(", "):
         __import__(modulo)
+
+
+def test_variables_del_acceso(tmp_path):
+    accesos = cargar_accesos()
+    raiz = tmp_path / "Mis cosas" / "RSI_Monitor"
+    variables = accesos.variables_acceso(raiz, raiz / ".venv" / "Scripts" / "python.exe")
+    assert variables["RSI_PROGRAMA"] == str(raiz / ".venv" / "Scripts" / "pythonw.exe")
+    assert variables["RSI_ARGUMENTOS"] == f'"{raiz / "app.py"}"'
+    assert variables["RSI_CARPETA"] == str(raiz)
+    assert variables["RSI_ICONO"].endswith("icono.ico,0")
+    assert (rutas.RAIZ_PROYECTO / "recursos" / "icono.ico").exists()
+
+
+def test_comando_powershell_usa_todas_las_variables():
+    accesos = cargar_accesos()
+    # Sin comillas dobles: así llega entero como un solo argumento a PowerShell.
+    assert '"' not in accesos.COMANDO_POWERSHELL
+    usadas = set(re.findall(r"\$env:(RSI_\w+)", accesos.COMANDO_POWERSHELL))
+    assert usadas == set(accesos.variables_acceso())
+
+
+def test_crear_pasa_las_rutas_en_el_entorno():
+    accesos = cargar_accesos()
+    llamadas = []
+
+    def ejecutar(comando, **opciones):
+        llamadas.append((comando, opciones))
+        return subprocess.CompletedProcess(comando, 0, "", "")
+
+    accesos.crear(ejecutar)
+    comando, opciones = llamadas[0]
+    assert comando[0] == "powershell" and comando[-1] == accesos.COMANDO_POWERSHELL
+    assert "-ExecutionPolicy" not in comando
+    assert opciones["env"]["RSI_CARPETA"] == str(accesos.RAIZ_PROYECTO)
