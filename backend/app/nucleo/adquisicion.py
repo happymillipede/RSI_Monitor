@@ -68,7 +68,8 @@ class Oyente:
     def al_detectar_fatiga(self, resumen):
         pass
 
-    def al_conectar(self, puerto):
+    def al_conectar(self, puerto, version):
+        """puerto es None con el BITalino simulado."""
         pass
 
 
@@ -211,8 +212,8 @@ class SesionMedicion:
 
     def avisar_conexion(self, dispositivo):
         puerto = getattr(dispositivo, "puerto", None)  # el simulado no tiene puerto
-        if puerto:
-            self.oyente.al_conectar(puerto)
+        pedir_version = getattr(dispositivo, "version", None)
+        self.oyente.al_conectar(puerto, pedir_version() if pedir_version else None)
 
     def volver_a_conectar(self, dispositivo, error):
         """

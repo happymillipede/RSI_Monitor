@@ -37,6 +37,7 @@
   "servidor": {
     "host": "127.0.0.1",
     "puerto": 8000,
-    "origenes_desarrollo": ["http://localhost:3000"]
+    "origenes_desarrollo": ["http://localhost:3000"],
+    "max_mensajes_en_cola": 2000
   }
 }

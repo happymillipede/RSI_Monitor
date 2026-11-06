@@ -263,7 +263,7 @@ class OyenteReconexion(Oyente):
     def al_cambiar_estado(self, estado, detalle=""):
         self.estados.append(estado)
 
-    def al_conectar(self, puerto):
+    def al_conectar(self, puerto, version):
         self.puertos.append(puerto)
 
     def al_cerrar_intervalo(self, resumen, linea_base):
