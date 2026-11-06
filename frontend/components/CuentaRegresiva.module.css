@@ -1,0 +1,41 @@
+/* Estilos de la cuenta regresiva del descanso. */
+
+.caja {
+  border-left: 6px solid var(--turquesa);
+  margin-bottom: var(--espacio);
+}
+
+.fila {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--espacio);
+}
+
+.nota {
+  margin: 0;
+  color: var(--texto-suave);
+  font-size: 0.9rem;
+}
+
+.tiempo {
+  margin-left: auto;
+  font-size: 2.4rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--turquesa);
+}
+
+.barra {
+  height: 8px;
+  margin-top: 10px;
+  background: var(--fondo);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.relleno {
+  height: 100%;
+  background: var(--turquesa);
+  transition: width 1s linear;
+}

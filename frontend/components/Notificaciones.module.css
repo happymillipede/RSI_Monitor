@@ -1,0 +1,10 @@
+/* Estilos del aviso de notificaciones. */
+
+.caja {
+  border-left: 4px solid var(--azul);
+}
+
+.caja p {
+  margin: 0 0 8px;
+  font-size: 0.9rem;
+}

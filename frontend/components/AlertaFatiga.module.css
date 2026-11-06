@@ -1,0 +1,52 @@
+/* Estilos de la ventana de alerta de fatiga (pantalla completa). */
+
+.fondo {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--espacio);
+  background: rgba(28, 40, 51, 0.85);
+}
+
+.ventana {
+  max-width: 560px;
+  width: 100%;
+  padding: 32px 28px;
+  text-align: center;
+  background: var(--tarjeta);
+  border-top: 8px solid var(--rojo);
+  border-radius: var(--radio);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+
+.icono {
+  font-size: 3.5rem;
+  line-height: 1;
+  color: var(--rojo);
+}
+
+.texto {
+  margin: 16px 0 10px;
+  font-size: 1.6rem;
+  color: var(--rojo);
+}
+
+.aclaracion {
+  margin: 0 0 24px;
+  font-size: 0.8rem;
+  color: var(--texto-suave);
+}
+
+.aceptar {
+  min-width: 200px;
+  padding: 14px 24px;
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #fff;
+  background: var(--verde);
+  border: none;
+  border-radius: var(--radio);
+}
