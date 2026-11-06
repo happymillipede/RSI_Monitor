@@ -1,0 +1,27 @@
+{
+  "name": "rsi-monitor-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Interfaz web de RSI Monitor (Grupo 2). Solo muestra datos y envía acciones al backend.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "lint": "eslint .",
+    "tipos": "tsc --noEmit"
+  },
+  "dependencies": {
+    "next": "16.4.2",
+    "react": "19.2.9",
+    "react-dom": "19.2.9",
+    "react-is": "19.2.9",
+    "recharts": "3.10.1"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.7",
+    "eslint": "9.39.5",
+    "eslint-config-next": "16.4.2",
+    "typescript": "6.0.3"
+  }
+}

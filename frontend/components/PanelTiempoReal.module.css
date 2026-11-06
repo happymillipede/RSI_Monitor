@@ -1,0 +1,78 @@
+/* Estilos del panel en tiempo real. */
+
+.vacio p {
+  color: var(--texto-suave);
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cabecera {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.estado {
+  color: #fff;
+  font-weight: 700;
+  padding: 6px 14px;
+  border-radius: 999px;
+}
+
+.simulacion {
+  color: var(--morado);
+  border: 2px solid var(--morado);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  padding: 4px 10px;
+  border-radius: 6px;
+}
+
+.calibracion {
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 4px solid var(--azul);
+  background: #ebf5fb;
+}
+
+.lineaBase {
+  margin: 0;
+  color: var(--texto-suave);
+}
+
+.contenido {
+  display: grid;
+  grid-template-columns: minmax(0, 2.2fr) minmax(0, 1fr); /* como width_ratios=[2.2, 1] del original */
+  gap: var(--espacio);
+}
+
+.graficos {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.informacion {
+  margin: 0;
+  padding: 10px;
+  font-family: var(--letra-mono);
+  font-size: 0.78rem;
+  line-height: 1.35;
+  background: #fbfcfc;
+  border: 1px solid var(--borde);
+  border-radius: 6px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 900px) {
+  .contenido {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

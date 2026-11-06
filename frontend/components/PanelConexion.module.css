@@ -1,0 +1,33 @@
+/* Estilos del panel de conexión. */
+
+.estado {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 6px;
+  font-weight: 700;
+}
+
+.punto {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+.dato {
+  margin: 2px 0;
+}
+
+.detalle {
+  margin: 6px 0 0;
+  color: var(--texto-suave);
+  font-size: 0.9rem;
+}
+
+.docker {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border-left: 4px solid var(--naranjo);
+  background: #fef5e7;
+  font-size: 0.9rem;
+}

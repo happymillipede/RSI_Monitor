@@ -1,0 +1,43 @@
+/* Estilos del botón Encender / Apagar. */
+
+.boton {
+  width: 100%;
+  padding: 18px;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #fff;
+  border: none;
+  border-radius: var(--radio);
+}
+
+.encender {
+  background: var(--verde);
+}
+
+.apagar {
+  background: var(--rojo);
+}
+
+.detalle {
+  margin: 8px 0 0;
+  color: var(--texto-suave);
+}
+
+.opciones {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.casilla {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.nota {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--texto-suave);
+}

@@ -1,0 +1,63 @@
+/* Estilos de la página principal: cabecera, avisos y columnas. */
+
+.pagina {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: var(--espacio);
+}
+
+.cabecera {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: var(--espacio);
+}
+
+.subtitulo {
+  color: var(--texto-suave);
+}
+
+.aviso,
+.error {
+  margin: 0 0 var(--espacio);
+  padding: 10px 12px;
+  border-radius: 6px;
+}
+
+.aviso {
+  background: #fef5e7;
+  border-left: 4px solid var(--naranjo);
+}
+
+.error {
+  background: #fdedec;
+  border-left: 4px solid var(--rojo);
+}
+
+.contenido {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: var(--espacio);
+  align-items: start;
+}
+
+.lateral {
+  display: flex;
+  flex-direction: column;
+  gap: var(--espacio);
+}
+
+.principal {
+  min-width: 0;
+}
+
+.cargando {
+  color: var(--texto-suave);
+}
+
+@media (max-width: 800px) {
+  .contenido {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
