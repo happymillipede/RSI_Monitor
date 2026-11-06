@@ -5,9 +5,9 @@ Usa un BITalino con 3 electrodos (sEMG por Bluetooth) y el código del grupo,
 `Código_Bitalino_Python.py`, que **no se modifica**: la app lo lee con `ast` y toma de
 ahí la clase `ProcesadorEMG` y las constantes (umbrales, tiempos, `SIM_*`).
 
-> Estado: **Fase 2** (ventana con gráficos, panel y Encender/Apagar en modo simulación).
-> La alerta, la bandeja, los descansos, los ajustes, la conexión al BITalino real y el
-> empaquetado llegan en las fases siguientes; este README se completa en la Fase 7.
+> Estado: **Fase 3** (ventana con gráficos y panel, alerta de fatiga, ícono en la bandeja).
+> Los descansos, los ajustes, la conexión al BITalino real y el empaquetado llegan en
+> las fases siguientes; este README se completa en la Fase 7.
 
 ## Preparar el entorno (Python 3.10.11)
 
@@ -43,8 +43,10 @@ python app.py --sim
 Elijan el escenario y la velocidad (×1 o ×10) y aprieten **Encender**. Primero se
 calibra la línea base y después se ven las tendencias de RMS y MDF y el panel de
 información (los mismos datos del original). Con `--umbrales-sim` se usan los umbrales
-`SIM_*` del original, que en `fatigue_test` disparan la alerta (la ventana de alerta
-llega en la Fase 3).
+`SIM_*` del original, que en `fatigue_test` disparan la alerta: aparece la ventana
+"Riesgo de fatiga muscular, descanse 10 minutos", que no se puede cerrar con la X ni con
+Escape, solo con **Aceptar**. Cerrar la ventana principal deja la app en la bandeja; para
+cerrarla del todo use **Salir** en el menú del ícono.
 
 ## Probar sin hardware y sin ventana
 

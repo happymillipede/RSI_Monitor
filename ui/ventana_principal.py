@@ -170,6 +170,7 @@ class GraficoTendencia(pg.PlotWidget):
 class VentanaPrincipal(QMainWindow):
     encender_apagar_pedido = Signal()
     modo_cambiado = Signal()
+    cerrada_por_usuario = Signal()
 
     def __init__(self, ventana_tendencia_s):
         super().__init__()
@@ -337,6 +338,13 @@ class VentanaPrincipal(QMainWindow):
         simulacion = activo and self.modo_simulacion()
         self.combo_escenario.setEnabled(simulacion)
         self.combo_velocidad.setEnabled(simulacion)
+
+    def closeEvent(self, evento):
+        # Cerrar la ventana solo la esconde (no tiene WA_DeleteOnClose). Si fue el usuario
+        # (la X), se avisa al coordinador, que deja la app en la bandeja.
+        evento.accept()
+        if evento.spontaneous():
+            self.cerrada_por_usuario.emit()
 
     def poner_boton(self, texto, color, activo):
         self.boton_encender.setText(texto)
