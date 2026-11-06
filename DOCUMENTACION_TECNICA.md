@@ -5,7 +5,12 @@ basta con el [README](README.md).
 
 ## Cómo usa la app el código original
 
-`Código_Bitalino_Python.py` no se modifica nunca. La app lo lee como texto con `ast`:
+La detección usa el código del grupo, `Código_Bitalino_Python.py`. La app no lo
+modifica nunca: lo lee cada vez que se abre, así que si cambian un umbral ahí, la app
+lo usa. Con el programa empaquetado, basta con poner una copia del original junto al
+`.exe` o a la `.app` para cambiar umbrales sin volver a crearlo.
+
+La app lee el original como texto con `ast`:
 
 - toma la clase `ProcesadorEMG` y los imports que esa clase necesita;
 - lee las constantes (umbrales, tiempos, `SIM_*`) sin ejecutar el resto del archivo;

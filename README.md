@@ -6,9 +6,6 @@ Cuando detecta fatiga, les pide que descansen unos minutos.
 
 > La alerta es una ayuda. **No es un diagnóstico médico.**
 
-La detección usa el código del grupo, `Código_Bitalino_Python.py`. La app no lo
-modifica: lo lee cada vez que se abre. Si cambian un umbral ahí, la app lo usa.
-
 ## Empezar en 5 minutos (sin el BITalino)
 
 Necesitan **Python 3.10.11**.
@@ -114,9 +111,6 @@ Hay que hacerlo en cada sistema: el `.exe` en Windows y la `.app` en macOS.
 2. Activen el entorno: `source .venv/bin/activate`
 3. Ejecuten: `pyinstaller RSI_Monitor.spec`
 4. La app queda en `dist/RSI_Monitor.app`. Muévanla a la carpeta **Aplicaciones**.
-
-Si ponen una copia de `Código_Bitalino_Python.py` junto al programa, la app usa esa
-copia. Así pueden cambiar umbrales sin volver a crear el programa.
 
 ### Permisos en macOS
 
