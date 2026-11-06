@@ -10,11 +10,12 @@ Configuración de la app (config.json).
 - El original nunca se modifica.
 
 Qué se puede editar aquí: PARAMETROS_DETECCION (qué constantes del original se
-pueden cambiar desde la app).
+pueden cambiar desde la app) y LIMITES_PARAMETROS (qué valores se aceptan).
 """
 
 import copy
 import json
+import math
 from pathlib import Path
 
 from nucleo import rutas
@@ -28,6 +29,21 @@ PARAMETROS_DETECCION = (
     "RMS_INCREASE_THRESHOLD",
     "MDF_DECREASE_THRESHOLD",
 )
+
+# Valores que se aceptan en los ajustes: (mínimo, máximo). Los umbrales son fracciones (0.20 = 20 %).
+LIMITES_PARAMETROS = {
+    "TREND_INTERVAL_S": (0.1, 600),
+    "BASELINE_DURATION_S": (0.1, 3600),
+    "ALERT_PERSISTENCE_S": (0.1, 3600),
+    "RMS_INCREASE_THRESHOLD": (0.0, 5.0),
+    "MDF_DECREASE_THRESHOLD": (0.0, 0.99),
+}
+
+
+def validar_parametro(nombre, valor):
+    minimo, maximo = LIMITES_PARAMETROS[nombre]
+    if not minimo <= valor <= maximo:
+        raise ValueError(f"{nombre} debe estar entre {minimo:g} y {maximo:g}.")
 
 
 def completar(valores, por_defecto):
@@ -90,6 +106,17 @@ class Configuracion:
             valor = self.datos["parametros_deteccion"].get(nombre)
             parametros[nombre] = constantes[nombre] if valor is None else valor
         return parametros
+
+    def poner_parametro(self, nombre, valor, constantes):
+        """
+        Guarda un parámetro de detección elegido en los ajustes (sin escribir el archivo).
+        Si es igual al del original (o None) queda null, para seguir los cambios del original.
+        """
+        if valor is not None:
+            validar_parametro(nombre, valor)
+            if math.isclose(valor, constantes[nombre]):
+                valor = None
+        self.datos["parametros_deteccion"][nombre] = valor
 
     def escenario_simulacion(self, constantes):
         """Escenario de config.json o, si es null, SIM_SCENARIO del original."""

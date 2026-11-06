@@ -5,9 +5,9 @@ Usa un BITalino con 3 electrodos (sEMG por Bluetooth) y el código del grupo,
 `Código_Bitalino_Python.py`, que **no se modifica**: la app lo lee con `ast` y toma de
 ahí la clase `ProcesadorEMG` y las constantes (umbrales, tiempos, `SIM_*`).
 
-> Estado: **Fase 4** (ventana, alerta de fatiga, bandeja, descansos y reloj de uso).
-> Los ajustes, la conexión al BITalino real y el empaquetado llegan en las fases
-> siguientes; este README se completa en la Fase 7.
+> Estado: **Fase 5** (ventana, alerta, bandeja, descansos, reloj de uso, ajustes e
+> inicio con el sistema). La conexión al BITalino real y el empaquetado llegan en las
+> fases siguientes; este README se completa en la Fase 7.
 
 ## Preparar el entorno (Python 3.10.11)
 

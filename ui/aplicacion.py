@@ -11,14 +11,17 @@ Qué se puede editar aquí: TIEMPO_MAXIMO_CIERRE_MS y los textos de los avisos.
 
 import sys
 
-from PySide6.QtCore import QObject, QTimer
+from PySide6.QtCore import QObject, QTimer, QUrl
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from nucleo import rutas
 from nucleo.adquisicion import CALIBRANDO, DESCONECTADO, ERROR, HiloAdquisicion, SesionMedicion, prefijo_csv
 from nucleo.simulador import DispositivoSimulado
 from ui.bandeja import ICONO_ALERTA, ICONO_APAGADO, ICONO_DESCANSO, ICONO_MIDIENDO, Bandeja, crear_icono
+from sistema import autoinicio
 from ui.cuenta_regresiva import VentanaCuentaRegresiva
+from ui.dialogo_ajustes import NOTA_PARAMETROS, DialogoAjustes
 from ui.dialogo_alerta import DialogoAlerta, texto_alerta
 from ui.pestana_descansos import DialogoTomarDescanso, PestanaDescansos
 from ui.ventana_principal import (
@@ -67,6 +70,10 @@ class AplicacionRSI(QObject):
 
         self.crear_ventanas()
         self.crear_bandeja()
+        # Empaquetada, el inicio con el sistema se deja como dice config.json (y se
+        # actualiza la ruta si el .exe o la .app se movieron de carpeta).
+        if rutas.esta_empaquetada():
+            self.aplicar_autoinicio(avisar_error=False)
 
         self.temporizador = QTimer(self)
         self.temporizador.timeout.connect(self.cada_segundo)
@@ -86,6 +93,10 @@ class AplicacionRSI(QObject):
         self.ventana.encender_apagar_pedido.connect(self.alternar_medicion)
         self.ventana.modo_cambiado.connect(self.guardar_modo)
         self.ventana.cerrada_por_usuario.connect(self.al_cerrar_ventana)
+        self.ventana.descanso_pedido.connect(self.tomar_descanso)
+        self.ventana.ajustes_pedido.connect(self.abrir_ajustes)
+        self.ventana.carpeta_datos_pedida.connect(self.abrir_carpeta_datos)
+        self.ventana.salir_pedido.connect(self.salir)
 
         self.pestana_descansos = PestanaDescansos(self.plantillas)
         self.pestana_descansos.tomar_descanso_pedido.connect(self.tomar_descanso)
@@ -298,6 +309,38 @@ class AplicacionRSI(QObject):
         restantes = self.descansos.segundos_restantes()
         self.cuenta_regresiva.actualizar(restantes, descanso.duracion_planeada_s)
         self.ventana.mostrar_detalle(texto_descanso(descanso.nombre, restantes))
+
+    # --- Ajustes ---
+
+    def abrir_ajustes(self):
+        autoinicio_antes = self.configuracion["sistema"]["iniciar_con_el_sistema"]
+        padre = self.ventana if self.ventana.isVisible() else None
+        dialogo = DialogoAjustes(
+            self.configuracion, self.constantes, self.puertos_disponibles(), autoinicio.soportado(), padre
+        )
+        if not dialogo.exec():
+            return
+        cambio_autoinicio = self.configuracion["sistema"]["iniciar_con_el_sistema"] != autoinicio_antes
+        if cambio_autoinicio or rutas.esta_empaquetada():
+            self.aplicar_autoinicio(avisar_error=True)
+        self.mostrar_detalle("Ajustes guardados. " + NOTA_PARAMETROS)
+
+    def aplicar_autoinicio(self, avisar_error):
+        try:
+            autoinicio.aplicar(self.configuracion["sistema"]["iniciar_con_el_sistema"])
+        except OSError as error:
+            texto = f"No se pudo cambiar el inicio con el sistema:\n{error}"
+            if avisar_error:
+                QMessageBox.warning(None, TITULO_VENTANA, texto)
+            else:
+                print(texto)
+
+    def puertos_disponibles(self):
+        return []
+
+    def abrir_carpeta_datos(self):
+        self.carpeta_datos.mkdir(parents=True, exist_ok=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.carpeta_datos)))
 
     # --- Estado que se muestra en la ventana y en la bandeja ---
 

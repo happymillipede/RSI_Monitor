@@ -180,6 +180,10 @@ class VentanaPrincipal(QMainWindow):
     encender_apagar_pedido = Signal()
     modo_cambiado = Signal()
     cerrada_por_usuario = Signal()
+    descanso_pedido = Signal()
+    ajustes_pedido = Signal()
+    carpeta_datos_pedida = Signal()
+    salir_pedido = Signal()
 
     def __init__(self, ventana_tendencia_s):
         super().__init__()
@@ -194,11 +198,20 @@ class VentanaPrincipal(QMainWindow):
         disposicion.addLayout(self.crear_barra_superior())
         disposicion.addWidget(self.pestanas, stretch=1)
         self.setCentralWidget(contenido)
+        self.crear_menu()
 
         self.mostrar_estado(DESCONECTADO)
         self.medicion_detenida()
 
     # --- Construcción de la interfaz ---
+
+    def crear_menu(self):
+        menu = self.menuBar().addMenu("RSI Monitor")
+        menu.addAction("Tomar descanso…", self.descanso_pedido.emit)
+        menu.addAction("Ajustes…", self.ajustes_pedido.emit)
+        menu.addAction("Abrir carpeta de datos", self.carpeta_datos_pedida.emit)
+        menu.addSeparator()
+        menu.addAction("Salir", self.salir_pedido.emit)
 
     def crear_barra_superior(self):
         self.etiqueta_estado = QLabel()
