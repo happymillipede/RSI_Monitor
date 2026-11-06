@@ -122,7 +122,7 @@ class BitalinoFalso:
 
 
 def test_bitalino_con_limite_funciona_como_el_original():
-    dispositivo = BitalinoConLimite("COM5", LIMITE_CORTO_S, BitalinoFalso)
+    dispositivo = BitalinoConLimite("COM5", LIMITE_CORTO_S, clase_bitalino=BitalinoFalso)
     assert dispositivo.version() == "BITalino_v5.1"
     dispositivo.start(1000, [0])
     assert len(dispositivo.read(10)) == 10
@@ -136,11 +136,23 @@ def test_si_no_responde_la_version_se_cierra_el_puerto():
         mudo = True
 
     with pytest.raises(TimeoutError):
-        BitalinoConLimite("COM5", LIMITE_CORTO_S, Mudo)
+        BitalinoConLimite("COM5", LIMITE_CORTO_S, clase_bitalino=Mudo)
+
+
+def test_apagar_corta_la_espera_enseguida():
+    class Mudo(BitalinoFalso):
+        mudo = True
+
+    detener = threading.Event()
+    threading.Timer(LIMITE_CORTO_S, detener.set).start()
+    inicio = time.monotonic()
+    with pytest.raises(InterruptedError):
+        BitalinoConLimite("COM5", 30, detener, clase_bitalino=Mudo)
+    assert time.monotonic() - inicio < 2
 
 
 def test_si_la_lectura_se_cuelga_se_corta_y_se_cierra_el_puerto():
-    dispositivo = BitalinoConLimite("COM5", LIMITE_CORTO_S, BitalinoFalso)
+    dispositivo = BitalinoConLimite("COM5", LIMITE_CORTO_S, clase_bitalino=BitalinoFalso)
     dispositivo.start(1000, [0])
     dispositivo.dispositivo.lectura_colgada = True
     with pytest.raises(TimeoutError):
@@ -181,7 +193,7 @@ def conexion_por_defecto(**cambios):
 def test_prueba_cada_puerto_y_reintenta_con_espera_creciente():
     probados = []
 
-    def abrir(puerto, limite_s):
+    def abrir(puerto, limite_s, detener):
         probados.append(puerto)
         if len(probados) < 7:
             raise TimeoutError("no responde")
@@ -199,7 +211,7 @@ def test_prueba_cada_puerto_y_reintenta_con_espera_creciente():
 
 
 def test_apagar_mientras_busca_devuelve_none():
-    def abrir(puerto, limite_s):
+    def abrir(puerto, limite_s, detener):
         raise OSError("no existe")
 
     conector = ConectorBitalino(conexion_por_defecto(), "/dev/tty.bitalino", abrir, list)
@@ -209,7 +221,7 @@ def test_apagar_mientras_busca_devuelve_none():
 def test_con_puerto_manual_solo_prueba_ese():
     probados = []
 
-    def abrir(puerto, limite_s):
+    def abrir(puerto, limite_s, detener):
         probados.append(puerto)
         return puerto
 
@@ -293,3 +305,25 @@ def test_la_sesion_se_reconecta_sin_perder_la_linea_base(original, tmp_path):
     assert len(oyente.resumenes) >= 20
     filas = sesion.ruta_csv.read_text(encoding="utf-8").strip().splitlines()
     assert len(filas) == len(oyente.resumenes) + 1  # un solo CSV para toda la sesión
+
+
+def test_apagar_con_la_lectura_colgada_termina_la_sesion_enseguida(original, tmp_path):
+    """Si el BITalino deja de responder y el usuario aprieta Apagar, la medición termina rápido."""
+
+    class Colgado(BitalinoFalso):
+        lectura_colgada = True
+
+    def abrir_dispositivo(detener, avisar):
+        return BitalinoConLimite("COM5", 30, detener, clase_bitalino=Colgado)
+
+    sesion = SesionMedicion(
+        original, parametros_del_original(original.constantes), abrir_dispositivo, tmp_path, "prueba", reconectar=True
+    )
+    hilo = threading.Thread(target=sesion.ejecutar)
+    hilo.start()
+    time.sleep(LIMITE_CORTO_S)
+    inicio = time.monotonic()
+    sesion.detener()
+    hilo.join(5)
+    assert not hilo.is_alive()
+    assert time.monotonic() - inicio < 3

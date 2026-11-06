@@ -15,15 +15,17 @@ Conexión automática con el BITalino por Bluetooth (como puerto serie).
 El paquete bitalino, en modo bloqueante, espera para siempre si el equipo no responde;
 y con su opción "timeout" ocupa un núcleo entero de la CPU mientras espera. Por eso
 aquí cada operación corre en un hilo auxiliar con un límite de tiempo
-(ejecutar_con_limite) y, si se pasa, se cierra el puerto.
+(ejecutar_con_limite) y, si se pasa o si el usuario aprieta Apagar o Salir, se
+cierra el puerto.
 
-Qué se puede editar aquí: PUERTO_ENTRANTE_WINDOWS. Los tiempos de espera están en
-config.json (sección "conexion").
+Qué se puede editar aquí: PUERTO_ENTRANTE_WINDOWS, REVISION_S y LIMITE_DETENER_S.
+Los tiempos de espera están en config.json (sección "conexion").
 """
 
 import glob
 import sys
 import threading
+import time
 
 from nucleo.adquisicion import BUSCANDO, CONECTANDO
 
@@ -31,11 +33,17 @@ from nucleo.adquisicion import BUSCANDO, CONECTANDO
 # para conectarse al BITalino) suele tener este texto en su identificador: se prueba al final.
 PUERTO_ENTRANTE_WINDOWS = "LOCALMFG&0000"
 
+# Mientras se espera al BITalino, cada cuánto se revisa si el usuario pidió detener.
+REVISION_S = 0.1
+# Límite para stop() al apagar: es solo enviar un byte, y la app no debe demorar en cerrarse.
+LIMITE_DETENER_S = 2
 
-def ejecutar_con_limite(funcion, limite_s):
+
+def ejecutar_con_limite(funcion, limite_s, detener=None):
     """
     Ejecuta funcion() en un hilo auxiliar y espera como máximo limite_s segundos.
-    Devuelve lo que devuelve funcion(), relanza su error, o lanza TimeoutError.
+    Devuelve lo que devuelve funcion() o relanza su error. Lanza TimeoutError si se
+    pasa del límite, o InterruptedError si antes se activa 'detener' (threading.Event).
     """
     resultado = {}
 
@@ -47,9 +55,14 @@ def ejecutar_con_limite(funcion, limite_s):
 
     hilo = threading.Thread(target=trabajar, daemon=True)
     hilo.start()
-    hilo.join(limite_s)
-    if hilo.is_alive():
-        raise TimeoutError(f"el BITalino no respondió en {limite_s:g} s")
+    fin = time.monotonic() + limite_s
+    while hilo.is_alive():
+        if detener is not None and detener.is_set():
+            raise InterruptedError("se pidió detener")
+        restante = fin - time.monotonic()
+        if restante <= 0:
+            raise TimeoutError(f"el BITalino no respondió en {limite_s:g} s")
+        hilo.join(min(restante, REVISION_S))
     if "error" in resultado:
         raise resultado["error"]
     return resultado["valor"]
@@ -114,11 +127,13 @@ class BitalinoConLimite:
     bitalino.BITalino: start(), read(), stop(), close(), version().
     """
 
-    def __init__(self, puerto, limite_s, clase_bitalino=None):
+    def __init__(self, puerto, limite_s, detener=None, clase_bitalino=None):
+        """detener: threading.Event; si se activa, la operación en curso se corta enseguida."""
         if clase_bitalino is None:
             from bitalino import BITalino as clase_bitalino
         self.puerto = puerto
         self.limite_s = limite_s
+        self.detener = detener
         self.fs = None
 
         # El objeto se crea antes de conectarse, para poder cerrar su puerto si el
@@ -127,9 +142,9 @@ class BitalinoConLimite:
         self.con_limite(lambda: clase_bitalino.__init__(self.dispositivo, puerto))
         self.texto_version = self.con_limite(self.dispositivo.version)
 
-    def con_limite(self, funcion, limite_s=None):
+    def con_limite(self, funcion, limite_s=None, interrumpible=True):
         try:
-            return ejecutar_con_limite(funcion, limite_s or self.limite_s)
+            return ejecutar_con_limite(funcion, limite_s or self.limite_s, self.detener if interrumpible else None)
         except Exception:
             cerrar_puerto(self.dispositivo)
             raise
@@ -146,7 +161,8 @@ class BitalinoConLimite:
         return self.con_limite(lambda: self.dispositivo.read(n), n / self.fs + self.limite_s)
 
     def stop(self):
-        self.con_limite(self.dispositivo.stop)
+        # Se llama justo después de apretar Apagar: no se interrumpe, pero tiene un límite corto.
+        self.con_limite(self.dispositivo.stop, LIMITE_DETENER_S, interrumpible=False)
 
     def close(self):
         cerrar_puerto(self.dispositivo)
@@ -187,7 +203,7 @@ class ConectorBitalino:
                     return None
                 avisar(CONECTANDO, f"Probando {puerto}…")
                 try:
-                    return self.abrir(puerto, self.conexion["timeout_s"])
+                    return self.abrir(puerto, self.conexion["timeout_s"], detener)
                 except Exception as error:
                     errores.append(f"{puerto}: {error or type(error).__name__}")
 
