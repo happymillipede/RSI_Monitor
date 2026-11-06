@@ -1,0 +1,16 @@
+# Lo que no se copia a la imagen Docker.
+.git
+.venv
+venv
+**/__pycache__
+**/.pytest_cache
+datos
+config.json
+frontend/node_modules
+frontend/.next
+frontend/out
+backend/estaticos
+*.ipynb
+*.pptx
+*.md
+.DS_Store

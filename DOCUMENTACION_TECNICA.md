@@ -3,27 +3,23 @@
 Este documento es para quien quiera entender o cambiar el código. Para usar la app,
 basta con el [README](README.md).
 
-## Cómo usa la app el código original
+## Cómo está armada
 
-La detección usa el código del grupo, `Código_Bitalino_Python.py`. La app no lo
-modifica nunca: lo lee cada vez que se abre, así que si cambian un umbral ahí, la app
-lo usa. Con el programa empaquetado, basta con poner una copia del original junto al
-`.exe` o a la `.app` para cambiar umbrales sin volver a crearlo.
+```
+navegador (Next.js, solo muestra)  ──REST /api──▶  FastAPI (backend/app/main.py)
+          ▲                                               │
+          └──────────── WebSocket /ws ◀── Servicio ◀── hilo de medición ◀── BITalino
+                                     (servicio.py)    (SesionMedicion)     (real o simulado)
+```
 
-La app lee el original como texto con `ast`:
-
-- toma la clase `ProcesadorEMG` y los imports que esa clase necesita;
-- lee las constantes (umbrales, tiempos, `SIM_*`) sin ejecutar el resto del archivo;
-- ignora las líneas que empiezan con `%` (comandos del notebook).
-
-La regla de fatiga (`cerrar_intervalo()`) y el generador de la simulación están
-copiados en `nucleo/regla_fatiga.py` y `nucleo/simulador.py`, sin cambiar la
-matemática. Cada parte indica de qué líneas del original viene.
-
-La regla original alerta una sola vez por sesión. La app agrega dos cosas:
-
-- después de cada descanso, la alerta vuelve a estar disponible (la línea base se mantiene);
-- durante un descanso no se evalúa la fatiga.
+- **Un solo proceso y un solo puerto.** Next.js se compila como página estática
+  (`output: "export"`) y FastAPI la sirve desde `backend/estaticos/`.
+- **El frontend no procesa la señal.** Recibe datos ya calculados y envía acciones.
+- **La lectura del BITalino es bloqueante**, así que corre en un hilo aparte. Cada aviso
+  del hilo pasa al bucle de asyncio con `loop.call_soon_threadsafe()`: todo el estado se
+  cambia en un solo hilo y FastAPI nunca se bloquea. Por eso las rutas son `async def`.
+- **Todo el estado vive en el backend**: la alerta pendiente, el descanso, el reloj y los
+  puntos de tendencia. Al conectarse, cada pestaña recibe una foto completa.
 
 ## Estructura
 
@@ -31,135 +27,162 @@ La regla original alerta una sola vez por sesión. La app agrega dos cosas:
 RSI_Monitor/
 ├─ Código_Bitalino_Python.py   el código original (no se toca)
 ├─ bitalino_codigo (Ver 3.0).ipynb, RSI_Monitor_Entrega2.pptx   originales del grupo
-├─ app.py                      punto de entrada (argumentos, modo sin ventana)
-├─ nucleo/                     lo que mide y decide; no tiene ventanas
-│  ├─ cargador_original.py     lee el original con ast
-│  ├─ regla_fatiga.py          línea base, racha y alerta
-│  ├─ simulador.py             BITalino simulado
-│  ├─ adquisicion.py           ciclo de medición, CSV y el hilo de medición
-│  ├─ conexion.py              búsqueda del BITalino y reconexión
-│  ├─ configuracion.py         config.json
-│  └─ rutas.py                 dónde se guardan los datos y dónde está el original
-├─ uso/                        reloj de uso, descansos, plantillas e historial
-├─ ui/                         ventanas: solo dibujan y avisan los clics
-│  ├─ aplicacion.py            conecta el hilo de medición con las ventanas
-│  └─ ventana_principal.py, dialogo_alerta.py, cuenta_regresiva.py,
-│     pestana_descansos.py, dialogo_ajustes.py, bandeja.py
-├─ sistema/autoinicio.py       iniciar con el sistema (Windows y macOS)
-├─ recursos/                   íconos del programa
-├─ herramientas/crear_iconos.py  vuelve a crear los íconos si cambia el dibujo
-├─ tests/                      pruebas
-├─ config.ejemplo.json         valores por defecto de config.json
-└─ RSI_Monitor.spec            receta para crear el .exe y la .app
+├─ compilar.py                 instala, compila, prueba y levanta la app
+├─ Dockerfile, .dockerignore   imagen en modo simulación
+├─ backend/
+│  ├─ requirements.txt, config.ejemplo.json, pytest.ini
+│  ├─ app/
+│  │  ├─ main.py               rutas REST, /ws, página estática y línea de comandos
+│  │  ├─ servicio.py           une todo: hilo de medición, conexión, alerta, descansos, reloj
+│  │  ├─ estado.py             estado en memoria y búferes circulares
+│  │  ├─ mensajes.py           formato de los mensajes (Pydantic)
+│  │  ├─ almacenamiento.py     rutas, config.json y descansos.json
+│  │  ├─ textos.py             panel de información, texto de la alerta y de la calibración
+│  │  ├─ sin_navegador.py      modo --headless
+│  │  ├─ nucleo/
+│  │  │  ├─ cargador_original.py  lee el original con ast
+│  │  │  ├─ regla_fatiga.py       línea base, racha y alerta (réplica de cerrar_intervalo)
+│  │  │  ├─ simulador.py          BITalino simulado (réplica de la celda de simulación)
+│  │  │  ├─ adquisicion.py        ciclo de medición y CSV
+│  │  │  └─ conexion.py           búsqueda del BITalino, límites de tiempo y reconexión
+│  │  └─ uso/
+│  │     ├─ reloj_uso.py          tiempo de uso de hoy y de la sesión
+│  │     └─ descansos.py          alerta pendiente, descansos, plantillas e historial
+│  ├─ estaticos/               página compilada (la crea compilar.py; no va en git)
+│  └─ tests/
+├─ frontend/
+│  ├─ app/page.tsx             la página: useReducer + WebSocket + acciones REST
+│  ├─ components/              un componente por panel, cada uno con su .module.css
+│  └─ lib/                     tipos.ts, api.ts, useWebSocket.ts, reductor.ts, ...
+└─ datos/                      config.json, descansos.json y CSV (no va en git)
 ```
 
 Cada archivo empieza con un comentario que explica qué hace y qué se puede editar ahí.
 
-## Pruebas
+Diferencias con la estructura que se pidió:
 
-```bash
-python -m pytest -q
-```
+- `servicio.py` une todas las piezas, para que `main.py` quede solo con las rutas.
+- `textos.py` arma el panel de información y los textos de la alerta. Así el frontend
+  solo los muestra y se pueden probar con pytest.
+- `sin_navegador.py` tiene el modo `--headless` aparte de las rutas.
+- `compilar.py` reemplaza a `compilar.ipynb`: el grupo pidió no mantener el formato de
+  notebook, y un script es más fácil de mantener (no guarda resultados en git).
+- En el frontend, `lib/reductor.ts` (cómo cambia la pantalla con cada mensaje),
+  `lib/notificaciones.ts`, `lib/useAvisoPestana.ts` (título y favicon de alerta),
+  `lib/formato.ts` y `components/Notificaciones.tsx`.
 
-No necesitan el BITalino y no abren ventanas. Revisan:
+## Cómo usa la app el código original
 
-- que el cargador lea bien la clase y las constantes del original, y vea sus cambios;
-- que la app dé los mismos resultados que el original. Para eso ejecutan la función
-  `cerrar_intervalo()` y la celda de simulación **del original** y comparan;
-- que `fatigue_test` alerte con los umbrales `SIM_*` y que `normal` no alerte;
-- el reloj de uso: pausa en descansos y cambio de día;
-- el flujo completo: alerta → Aceptar → descanso → la alerta vuelve a estar disponible;
-- las plantillas, el historial y la configuración;
-- el inicio con el sistema, con un registro de Windows y un LaunchAgent de macOS falsos;
-- la conexión, con puertos y BITalino falsos: orden de búsqueda, reintentos y reconexión.
+La app no modifica nunca `Código_Bitalino_Python.py`. Lo lee cada vez que arranca, así
+que si cambian un umbral o un filtro ahí, la app lo usa sin tocar nada más.
 
-## Probar sin ventana
+`nucleo/cargador_original.py` lo lee como texto con `ast`:
 
-```bash
-python app.py --sim --headless --velocidad 10 --escenario fatigue_test --umbrales-sim --duracion 60
-```
+- ignora las líneas que empiezan con `%` (comandos del notebook);
+- extrae y ejecuta solo la clase `ProcesadorEMG` con los imports que usa;
+- lee las constantes simples con `ast.literal_eval` (`CANAL`, `PERIODO`, `N`, umbrales,
+  `SIM_*`...), sin ejecutar el resto del archivo.
 
-Imprime los estados y la alerta en la consola. Otras opciones:
+La regla de fatiga (`cerrar_intervalo()`) y el generador de la simulación están mezclados
+con matplotlib y Jupyter, así que están copiados en `nucleo/regla_fatiga.py` y
+`nucleo/simulador.py` sin cambiar la matemática. Cada parte dice de qué líneas viene.
+Las pruebas ejecutan el código **del original** y comparan los resultados.
 
-- `--velocidad 0`: lo más rápido posible;
-- `--escenario normal`;
-- `--detalle`: imprime cada intervalo;
-- sin `--duracion`: mide hasta Ctrl+C;
-- sin `--sim`: usa el BITalino real.
+Cambios pedidos para la app (no tocan la matemática):
 
-## Configuración (`config.json`)
+- la medición dura hasta Apagar, no `DURACION = 120` s;
+- un CSV por sesión, con fecha y hora en el nombre;
+- después de cada descanso la alerta se rearma (el original alerta una vez por sesión);
+  la línea base se mantiene;
+- durante un descanso no se evalúa la fatiga;
+- el simulador entrega las muestras a ritmo real, con velocidad ×1 o ×10.
 
-La primera vez se crea copiando `config.ejemplo.json`. Si se edita a mano, que sea con
-la app cerrada. Si el archivo se daña, se guarda como `config.json.dañado` y se crea uno nuevo.
+## Configuración (`datos/config.json`)
+
+La primera vez se crea copiando `backend/config.ejemplo.json`. Si el ejemplo trae claves
+nuevas, se agregan solas. Si el archivo se daña, se guarda como `config.json.dañado`.
 
 | Sección | Clave | Qué es |
 |---|---|---|
-| `parametros_deteccion` | `TREND_INTERVAL_S`, `BASELINE_DURATION_S`, `ALERT_PERSISTENCE_S`, `RMS_INCREASE_THRESHOLD`, `MDF_DECREASE_THRESHOLD` | `null` = usar el valor del original. Un número tiene prioridad |
-| `simulacion` | `activa`, `escenario`, `velocidad`, `usar_umbrales_sim` | modo de la ventana. `escenario: null` = `SIM_SCENARIO` del original |
-| `conexion` | `puerto_manual` | `null` = buscar solo. Ejemplo: `"COM5"` |
+| `parametros_deteccion` | `TREND_INTERVAL_S`, `BASELINE_DURATION_S`, `ALERT_PERSISTENCE_S`, `RMS_INCREASE_THRESHOLD`, `MDF_DECREASE_THRESHOLD` | `null` = valor del original. Un número tiene prioridad |
+| `simulacion` | `escenario`, `velocidad`, `velocidades`, `usar_umbrales_sim` | lo último elegido en la página. `escenario: null` = `SIM_SCENARIO` |
+| `conexion` | `puerto_manual` | `null` = buscar solo. Si tiene un puerto, solo se prueba ese |
 | | `ultimo_puerto` | el último que funcionó; se prueba primero |
 | | `timeout_s` | segundos máximos por intento |
-| | `espera_inicial_s`, `espera_maxima_s` | espera entre búsquedas: 1, 2, 4… segundos hasta el máximo |
-| `descansos` | `duracion_fatiga_min`, `plantillas` | minutos del descanso por fatiga y plantillas |
+| | `espera_inicial_s`, `espera_maxima_s` | espera entre búsquedas: 1, 2, 4... s hasta el máximo |
+| `descansos` | `duracion_fatiga_min` | minutos del descanso por fatiga |
+| | `plantillas_iniciales` | plantillas con que se crea `descansos.json` |
 | `reloj_uso` | `guardar_cada_s` | cada cuánto se guarda el reloj de uso |
-| `sistema` | `iniciar_con_el_sistema` | `true` por defecto |
-
-## Dónde se guardan los datos
-
-`config.json` y la carpeta `datos/` van junto a `app.py` o junto al `.exe`. Hay dos excepciones:
-
-- si ahí no se puede escribir (por ejemplo, en Archivos de programa), van a `%APPDATA%\RSI_Monitor`;
-- en macOS, la `.app` siempre usa `~/Library/Application Support/RSI_Monitor`.
-
-Los CSV tienen las mismas columnas que el original: `Time (s)`, `Mean RMS (ADC)` y
-`Median MDF (Hz)`. En simulación se llaman `EMG_simulated_features_…`.
+| `memoria` | `max_puntos_tendencia`, `max_bloques` | tamaño de los búferes en memoria (el CSV guarda todo) |
+| `servidor` | `host`, `puerto`, `origenes_desarrollo`, `max_mensajes_en_cola` | dónde escucha y quién puede usar la API |
 
 ## Conexión con el BITalino
 
-La app prueba los puertos en este orden:
+El paquete `bitalino` (1.2.6) se conecta **por puerto serie** si el nombre empieza con
+`COM` (Windows) o `/dev/` (macOS y Linux). Solo usa PyBluez si se le da una dirección
+MAC, y en macOS la MAC no está permitida. La app siempre usa el puerto serie.
 
-1. el puerto manual de los ajustes (si hay uno, solo ese);
-2. el último puerto que funcionó;
-3. el `PUERTO` del original;
-4. los que encuentra sola: en macOS, `/dev/tty.*` con "bitalino" en el nombre; en
-   Windows, los puertos COM de Bluetooth.
+Orden en que se prueban los puertos:
 
-Cada puerto se valida pidiéndole la versión al BITalino. Si ninguno responde, espera y
-vuelve a buscar.
+1. el puerto elegido en el panel de conexión (si se eligió uno mientras busca);
+2. el `puerto_manual` de `config.json` (si hay uno, solo ese);
+3. el último puerto que funcionó;
+4. el `PUERTO` del original;
+5. los que encuentra sola: en macOS, `/dev/tty.*` con "bitalino" en el nombre; en
+   Windows, los COM de Bluetooth (`BTHENUM`), con el "entrante" al final.
 
-El paquete `bitalino` tiene un problema: si el equipo no responde, se queda esperando
-para siempre, y su opción `timeout` usa un núcleo entero del procesador mientras espera.
-Por eso la app hace cada operación en un hilo aparte, con un tiempo máximo. Si se pasa
-del tiempo, o si el usuario aprieta Apagar o Salir, cierra el puerto.
+Cada puerto se valida pidiéndole la versión al BITalino.
 
-Si se pierde la conexión durante la medición, la app la recupera sin perder la línea
-base ni el CSV.
+El paquete tiene un problema: si el equipo no responde, se queda esperando para siempre,
+y su opción `timeout` usa un núcleo entero del procesador mientras espera. Por eso cada
+operación corre en un hilo auxiliar con un tiempo máximo (`ejecutar_con_limite`). Si se
+pasa del tiempo, o si el usuario aprieta Apagar, se cierra el puerto.
+
+- **Con la medición apagada**, Reconectar o Detectar automáticamente conectan en un hilo
+  y dejan el BITalino listo: Encender usa esa misma conexión.
+- **Si se corta midiendo**, la sesión busca sola con espera creciente, sin perder la
+  línea base ni el CSV. Elegir un puerto en ese momento lo prueba primero y corta la espera.
+- **En Docker** el modo real responde 409 y la página lo explica.
+
+## Seguridad local
+
+- El backend escucha solo en `127.0.0.1`. En Docker escucha en `0.0.0.0` dentro del
+  contenedor, pero el puerto se publica solo en `127.0.0.1`.
+- CORS permite solo `http://localhost:3000` (el frontend de desarrollo).
+- Los `POST`/`PUT`/`DELETE` y el WebSocket rechazan otros `Origin`: así una página web
+  cualquiera abierta en el navegador no puede manejar la app.
+
+## Pruebas
+
+```bash
+cd backend && ../.venv/bin/python -m pytest -q
+cd frontend && npm run tipos && npm run lint
+```
+
+No necesitan el BITalino. Revisan:
+
+- que el cargador lea bien la clase y las constantes del original, y vea sus cambios;
+- que la regla y la simulación den lo mismo que el código original;
+- que `fatigue_test` alerte con los umbrales `SIM_*` y que `normal` no alerte;
+- el flujo alerta → pendiente (sin duplicados) → Aceptar → descanso → rearme;
+- el reloj de uso (con tiempo simulado), las plantillas y el historial;
+- la API REST y el WebSocket con el `TestClient` de FastAPI;
+- la conexión con puertos y un BITalino falsos: orden de búsqueda, espera creciente,
+  Reconectar, Detectar y reconexión a mitad de la medición.
 
 ## Versiones
 
-- **Python 3.10.11.** Para esa versión hay `PyBluez-bitalino` listo para Windows, así
-  que no hay que compilar nada.
-- **PySide6 6.11.3.** La 6.12.0 hace que la app se caiga al cerrarse después de medir.
-  Lo comprobamos con un programa mínimo, sin nuestro código. No la suban sin probar.
-- La app se conecta por puerto serie, así que el programa empaquetado no incluye el
-  módulo `bluetooth`. Ese módulo solo se usa para conectar por dirección MAC.
-
-## El programa empaquetado
-
-- `RSI_Monitor.spec` crea un solo `.exe` en Windows. Para crear una carpeta en su lugar
-  (abre más rápido), cambien `UN_SOLO_ARCHIVO = False`.
-- En macOS siempre crea la `.app`, con el permiso de Bluetooth ya declarado.
-- Incluye el original y `config.ejemplo.json`. Una copia del original junto al
-  programa tiene prioridad.
-- **Iniciar con el sistema** solo se activa sola con el programa empaquetado. En
-  Windows se guarda en `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`. En macOS,
-  en `~/Library/LaunchAgents/cl.grupo2.rsimonitor.plist`. Al abrirse así, la app queda
-  en la bandeja con la medición apagada. Si se corre desde el código, solo se registra
-  al cambiar la opción en Ajustes.
-- macOS muestra el aviso "Se agregó un ítem en segundo plano". Se revisa en Ajustes del
-  Sistema → General → Ítems de inicio.
-- Si cambian el dibujo del ícono en `ui/bandeja.py`, ejecuten
-  `python herramientas/crear_iconos.py`.
+- **Python 3.10.11**, la del código original. Por eso `websockets` quedó en 16.1.1 (la 17
+  ya no funciona con 3.10).
+- **Next.js 16.4.2, React 19.2.9, Recharts 3.10.1, TypeScript 6.0.3.** Se usó Recharts
+  porque lo sugería el pedido y alcanza para dos gráficos de líneas.
+- **ESLint 9.39.5.** npm avisa que ya no tiene soporte, pero con ESLint 10 el plugin de
+  React que trae `eslint-config-next` da conflictos de dependencias.
+- `react-is` está porque Recharts la exige para instalarse.
+- Starlette sugiere `httpx2` para el TestClient; `httpx` funciona y es lo que pide
+  FastAPI (el aviso se oculta en `pytest.ini`).
+- En Docker, `bitalino` se instala sin PyBluez (no se puede compilar en la imagen slim y
+  solo sirve para conectar por MAC).
 
 ## Resultados de la simulación
 
@@ -189,16 +212,8 @@ No se corrigieron; quedan anotadas para el grupo.
 - En la simulación, la rampa de `fatigue_test` empieza al segundo 1
   (`SIM_BASELINE_DURATION_S`), aunque se usen los umbrales normales, cuya línea base
   dura 5 s. Así, la línea base se mide con la rampa ya empezada.
-
-## Antes de entregar
-
-La app se programó y probó en Linux con la simulación. Todavía no se probó con el
-BITalino real, ni el `.exe` en Windows, ni la `.app` en macOS. En cada sistema, revisen:
-
-1. `python -m pytest -q` pasa.
-2. `python app.py --sim --umbrales-sim` a ×10: alerta → Aceptar → cuenta regresiva →
-   Terminar antes → vuelve a alertar.
-3. Con el BITalino: Encender, ver la calibración y los gráficos. Apagar el BITalino a
-   mitad de la medición y ver que la app se reconecta al encenderlo otra vez.
-4. El programa empaquetado abre, queda en la bandeja al cerrar la ventana y se cierra con **Salir**.
-5. Las notificaciones aparecen.
+- Hay una versión más nueva del notebook (Ver 3.3) con otros valores (intervalo de 8 s,
+  línea base y persistencia de 30 s) y otro simulador sin las constantes `SIM_*`. La app
+  usa `Código_Bitalino_Python.py` (Ver 3.0). Si exportan la 3.3 a ese archivo, el
+  cargador toma los umbrales nuevos, pero hay que agregarle las constantes `SIM_*` o
+  adaptar `nucleo/simulador.py`.
