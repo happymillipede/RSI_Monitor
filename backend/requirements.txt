@@ -1,0 +1,13 @@
+# Dependencias del backend de RSI Monitor (Python 3.10.11).
+# Instalar con:  pip install -r requirements.txt
+
+# Ya usadas por el código original
+bitalino==1.2.6
+numpy==2.2.6
+scipy==1.15.3
+
+# Detectar y listar los puertos serie (Bluetooth) del BITalino
+pyserial==3.5
+
+# Pruebas
+pytest==9.2.0

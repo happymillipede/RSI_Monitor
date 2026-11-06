@@ -1,0 +1,42 @@
+{
+  "_ayuda": "Valores por defecto de RSI Monitor. La app copia este archivo a datos/config.json la primera vez. En 'parametros_deteccion' y en 'simulacion.escenario', null significa 'usar el valor de Código_Bitalino_Python.py'.",
+  "parametros_deteccion": {
+    "TREND_INTERVAL_S": null,
+    "BASELINE_DURATION_S": null,
+    "ALERT_PERSISTENCE_S": null,
+    "RMS_INCREASE_THRESHOLD": null,
+    "MDF_DECREASE_THRESHOLD": null
+  },
+  "simulacion": {
+    "escenario": null,
+    "velocidad": 1,
+    "velocidades": [1, 10],
+    "usar_umbrales_sim": false
+  },
+  "conexion": {
+    "puerto_manual": null,
+    "ultimo_puerto": null,
+    "timeout_s": 10,
+    "espera_inicial_s": 1,
+    "espera_maxima_s": 30
+  },
+  "descansos": {
+    "duracion_fatiga_min": 10,
+    "plantillas_iniciales": [
+      {"nombre": "Pausa activa", "duracion_min": 5},
+      {"nombre": "Café", "duracion_min": 15}
+    ]
+  },
+  "reloj_uso": {
+    "guardar_cada_s": 30
+  },
+  "memoria": {
+    "max_puntos_tendencia": 3600,
+    "max_bloques": 120
+  },
+  "servidor": {
+    "host": "127.0.0.1",
+    "puerto": 8000,
+    "origenes_desarrollo": ["http://localhost:3000"]
+  }
+}

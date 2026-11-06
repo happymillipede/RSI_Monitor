@@ -6,6 +6,11 @@ Cuando detecta fatiga, les pide que descansen unos minutos.
 
 > La alerta es una ayuda. **No es un diagnóstico médico.**
 
+> **Rama `web` (en construcción):** aquí la app de escritorio se está convirtiendo en una
+> app web local (FastAPI + Next.js). Por ahora solo funciona el modo sin navegador:
+> `cd backend && python -m app.main --sim --headless --velocidad 10`.
+> La app de escritorio sigue en la rama `main`. El README completo llega en la fase 6.
+
 ## Empezar en 5 minutos (sin el BITalino)
 
 Necesitan **Python 3.10.11**.

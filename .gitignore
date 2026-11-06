@@ -5,9 +5,15 @@ __pycache__/
 venv/
 .pytest_cache/
 
-# PyInstaller
-build/
-dist/
+# Node y Next.js
+node_modules/
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+
+# Frontend compilado que sirve FastAPI (se crea con compilar.py)
+backend/estaticos/
 
 # Jupyter y sistema
 .ipynb_checkpoints/
@@ -16,4 +22,4 @@ dist/
 # Datos del usuario (se crean al usar la app)
 datos/
 config.json
-config.json.dañado
+*.dañado
