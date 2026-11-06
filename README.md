@@ -6,9 +6,25 @@ Cuando detecta fatiga, les pide que descansen unos minutos.
 
 > La alerta es una ayuda. **No es un diagnóstico médico.**
 
+## Instalar en Windows (lo más fácil)
+
+1. En GitHub, aprieten **Code → Download ZIP** y descomprímanlo donde quieran.
+2. Dentro de la carpeta `RSI_Monitor`, hagan doble clic en **`instalar.bat`**.
+3. Esperen unos minutos. El instalador descarga Python 3.10 y todo lo que la app necesita.
+   No pide permisos de administrador.
+4. Al terminar, la app se abre sola. Queda un acceso directo **RSI Monitor** en el
+   Escritorio y en el menú Inicio.
+
+Si Windows pide confirmación ("Windows protegió su PC"), aprieten **Más información →
+Ejecutar de todas formas**. Si algo falla, el detalle queda en `instalacion.log`. Pueden volver a
+abrir `instalar.bat` sin problema: completa lo que falte.
+
+No muevan la carpeta después de instalar, porque los accesos directos apuntan ahí. Si la
+mueven, vuelvan a abrir `instalar.bat`.
+
 ## Empezar en 5 minutos (sin el BITalino)
 
-Necesitan **Python 3.10.11**.
+Necesitan **Python 3.10.11**. En Windows pueden saltarse esto si usaron `instalar.bat`.
 
 **En macOS** (con pyenv):
 

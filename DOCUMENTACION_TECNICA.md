@@ -32,6 +32,7 @@ RSI_Monitor/
 ├─ Código_Bitalino_Python.py   el código original (no se toca)
 ├─ bitalino_codigo (Ver 3.0).ipynb, RSI_Monitor_Entrega2.pptx   originales del grupo
 ├─ app.py                      punto de entrada (argumentos, modo sin ventana)
+├─ instalar.bat, instalar.ps1  instalador de Windows
 ├─ nucleo/                     lo que mide y decide; no tiene ventanas
 │  ├─ cargador_original.py     lee el original con ast
 │  ├─ regla_fatiga.py          línea base, racha y alerta
@@ -161,6 +162,24 @@ base ni el CSV.
 - Si cambian el dibujo del ícono en `ui/bandeja.py`, ejecuten
   `python herramientas/crear_iconos.py`.
 
+## El instalador de Windows
+
+`instalar.bat` solo abre `instalar.ps1` con PowerShell, sin la restricción de scripts.
+`instalar.ps1`:
+
+1. busca un Python 3.10 de 64 bits (con `py -3.10-64`, en el PATH o en las carpetas de siempre). Si
+   no hay, descarga `python-3.10.11-amd64.exe` de python.org, compara su SHA-256 y lo
+   instala sin preguntas solo para el usuario, en `%LOCALAPPDATA%\Programs\Python\Python310`;
+2. crea `.venv` (o lo vuelve a crear si no es 3.10) e instala `requirements.txt`;
+3. deja el inicio con el sistema según `config.json`, con `sistema/autoinicio.py`;
+4. crea los accesos directos a `.venv\Scripts\pythonw.exe app.py`;
+5. abre la app (`instalar.bat -SinAbrir` para no abrirla).
+
+Los dos archivos llevan CRLF, y el `.ps1` lleva BOM, porque Windows PowerShell 5 lee
+sin BOM como ANSI y rompe las tildes. `.gitattributes` los guarda tal cual.
+`tests/test_instalador.py` revisa eso y el código Python que ejecuta el `.ps1`. Si
+cambia la versión de Python, hay que cambiar `VERSION_PYTHON` y `SHA256_PYTHON`.
+
 ## Resultados de la simulación
 
 Con 1000 s de señal simulada:
@@ -200,5 +219,6 @@ BITalino real, ni el `.exe` en Windows, ni la `.app` en macOS. En cada sistema, 
    Terminar antes → vuelve a alertar.
 3. Con el BITalino: Encender, ver la calibración y los gráficos. Apagar el BITalino a
    mitad de la medición y ver que la app se reconecta al encenderlo otra vez.
-4. El programa empaquetado abre, queda en la bandeja al cerrar la ventana y se cierra con **Salir**.
-5. Las notificaciones aparecen.
+4. `instalar.bat` en un Windows sin Python: instala, abre la app y deja los accesos directos.
+5. El programa empaquetado abre, queda en la bandeja al cerrar la ventana y se cierra con **Salir**.
+6. Las notificaciones aparecen.

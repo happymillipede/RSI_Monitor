@@ -1,0 +1,4 @@
+# Los archivos de Windows se guardan tal cual (fin de línea CRLF), para que cmd y
+# PowerShell los lean bien aunque se descarguen como ZIP o se clonen en macOS/Linux.
+*.bat -text
+*.ps1 -text
