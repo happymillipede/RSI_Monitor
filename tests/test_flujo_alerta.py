@@ -58,7 +58,7 @@ def test_flujo_completo_con_la_simulacion(original, tmp_path):
     gestor = GestorDescansos(tmp_path, ahora=ahora)
     oyente = OyenteFlujo(gestor, ahora)
 
-    def abrir_dispositivo():
+    def abrir_dispositivo(detener, avisar):
         return DispositivoSimulado(
             "fatigue_test", original.fs, constantes["SIM_BASELINE_DURATION_S"], velocidad=None
         )

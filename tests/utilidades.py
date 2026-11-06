@@ -51,7 +51,7 @@ def simular(original, carpeta, escenario, duracion_s, sim=False, parametros=None
     parametros = parametros or parametros_del_original(constantes, sim)
     oyente = OyenteRegistro(duracion_s, constantes["PERIODO"])
 
-    def abrir_dispositivo():
+    def abrir_dispositivo(detener, avisar):
         return DispositivoSimulado(
             escenario, original.fs, constantes["SIM_BASELINE_DURATION_S"], velocidad=None
         )

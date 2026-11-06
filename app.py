@@ -7,6 +7,7 @@ Uso:
     python app.py --sim --umbrales-sim    ídem, con los umbrales SIM_* del original
     python app.py --sim --headless --velocidad 10 --escenario fatigue_test --umbrales-sim --duracion 60
                                           mide sin ventana e imprime los estados y las alertas
+    python app.py --headless              ídem con el BITalino real (lo busca y se conecta solo)
 
 Opciones del modo sin ventana (--headless):
     --velocidad V     1 = tiempo real, 10 = diez veces más rápido, 0 = lo más rápido posible
@@ -25,8 +26,9 @@ import sys
 from nucleo import rutas
 from nucleo.adquisicion import Oyente, SesionMedicion, prefijo_csv
 from nucleo.cargador_original import cargar_original
+from nucleo.conexion import ConectorBitalino
 from nucleo.configuracion import Configuracion
-from nucleo.regla_fatiga import MENSAJE_ALERTA_SIMULADA
+from nucleo.regla_fatiga import MENSAJE_ALERTA_ORIGINAL, MENSAJE_ALERTA_SIMULADA
 from nucleo.simulador import DispositivoSimulado
 
 
@@ -46,10 +48,11 @@ def leer_argumentos(argumentos=None):
 class OyenteConsola(Oyente):
     """Imprime en la consola lo que pasa durante la medición (modo --headless)."""
 
-    def __init__(self, duracion_s, detalle, mensaje_alerta):
+    def __init__(self, duracion_s, detalle, mensaje_alerta, configuracion):
         self.duracion_s = duracion_s
         self.detalle = detalle
         self.mensaje_alerta = mensaje_alerta
+        self.configuracion = configuracion
         self.sesion = None
         self.alertas = 0
 
@@ -69,35 +72,45 @@ class OyenteConsola(Oyente):
         self.alertas += 1
         print(f"\n[t={resumen.tiempo:.1f} s] ALERTA DE FATIGA: {self.mensaje_alerta}\n")
 
+    def al_conectar(self, puerto):
+        print(f"Conectado al BITalino en {puerto}")
+        self.configuracion["conexion"]["ultimo_puerto"] = puerto
+        self.configuracion.guardar()
+
 
 def ejecutar_sin_ventana(argumentos, original, configuracion, carpeta_base):
-    if not argumentos.sim:
-        print("Por ahora el modo sin ventana solo funciona con --sim.")
-        return 2
-
     constantes = original.constantes
-    parametros = configuracion.parametros_deteccion(constantes, argumentos.umbrales_sim)
-    escenario = argumentos.escenario or configuracion.escenario_simulacion(constantes)
-    velocidad = argumentos.velocidad
-    if velocidad is None:
-        velocidad = configuracion["simulacion"]["velocidad"]
+    simulacion = argumentos.sim
+    parametros = configuracion.parametros_deteccion(constantes, simulacion and argumentos.umbrales_sim)
 
-    def abrir_dispositivo():
-        return DispositivoSimulado(
-            escenario,
-            original.fs,
-            inicio_rampa_s=constantes["SIM_BASELINE_DURATION_S"],
-            velocidad=velocidad or None,
-        )
+    if simulacion:
+        escenario = argumentos.escenario or configuracion.escenario_simulacion(constantes)
+        velocidad = argumentos.velocidad
+        if velocidad is None:
+            velocidad = configuracion["simulacion"]["velocidad"]
 
-    oyente = OyenteConsola(argumentos.duracion, argumentos.detalle, MENSAJE_ALERTA_SIMULADA)
+        def abrir_dispositivo(detener, avisar):
+            return DispositivoSimulado(
+                escenario,
+                original.fs,
+                inicio_rampa_s=constantes["SIM_BASELINE_DURATION_S"],
+                velocidad=velocidad or None,
+            )
+
+        mensaje_alerta = MENSAJE_ALERTA_SIMULADA
+    else:
+        abrir_dispositivo = ConectorBitalino(configuracion["conexion"], constantes["PUERTO"])
+        mensaje_alerta = MENSAJE_ALERTA_ORIGINAL
+
+    oyente = OyenteConsola(argumentos.duracion, argumentos.detalle, mensaje_alerta, configuracion)
     sesion = SesionMedicion(
         original,
         parametros,
         abrir_dispositivo,
         rutas.carpeta_datos(carpeta_base),
-        prefijo_csv(constantes, simulacion=True),
+        prefijo_csv(constantes, simulacion),
         oyente,
+        reconectar=not simulacion,
     )
     oyente.sesion = sesion
 
@@ -105,16 +118,22 @@ def ejecutar_sin_ventana(argumentos, original, configuracion, carpeta_base):
     signal.signal(signal.SIGINT, lambda *_: sesion.detener())
 
     print(f"Original: {original.ruta}")
-    texto_velocidad = f"x{velocidad:g}" if velocidad else "sin esperar"
-    print(f"Escenario: {escenario} | velocidad: {texto_velocidad} | parámetros: {parametros}")
+    if simulacion:
+        texto_velocidad = f"x{velocidad:g}" if velocidad else "sin esperar"
+        print(f"Escenario: {escenario} | velocidad: {texto_velocidad}")
+    print(f"Parámetros: {parametros}")
     print(f"CSV: {sesion.ruta_csv}")
-    sesion.ejecutar()
+    try:
+        sesion.ejecutar()
+    except Exception as error:
+        print(f"La medición se detuvo por un error: {error}")
+        return 1
 
     linea_base = sesion.regla.linea_base()
     if linea_base:
         print(f"Línea base: RMS={linea_base[0]:.3f} ADC | MDF={linea_base[1]:.3f} Hz")
     if oyente.alertas == 0:
-        print(f"Simulación terminada ({escenario}). La regla no disparó ninguna alerta.")
+        print("Medición terminada. La regla no disparó ninguna alerta.")
     print(f"Segundos de señal: {sesion.n_medicion * constantes['PERIODO']:.1f}")
     return 0
 

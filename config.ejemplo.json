@@ -16,7 +16,7 @@
   "conexion": {
     "puerto_manual": null,
     "ultimo_puerto": null,
-    "timeout_s": 5,
+    "timeout_s": 10,
     "espera_inicial_s": 1,
     "espera_maxima_s": 30
   },

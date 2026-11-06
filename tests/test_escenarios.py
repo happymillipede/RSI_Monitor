@@ -90,7 +90,7 @@ def test_stop_se_llama_aunque_falle_la_lectura(original, tmp_path):
     sesion = SesionMedicion(
         original,
         parametros_del_original(original.constantes),
-        lambda: dispositivo,
+        lambda detener, avisar: dispositivo,
         tmp_path,
         "prueba",
     )
@@ -102,7 +102,7 @@ def test_stop_se_llama_aunque_falle_la_lectura(original, tmp_path):
 
 
 def test_no_deja_csv_vacio_si_no_hay_dispositivo(original, tmp_path):
-    def abrir_que_falla():
+    def abrir_que_falla(detener, avisar):
         raise RuntimeError("no hay BITalino")
 
     sesion = SesionMedicion(

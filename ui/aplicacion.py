@@ -16,7 +16,8 @@ from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from nucleo import rutas
-from nucleo.adquisicion import CALIBRANDO, DESCONECTADO, ERROR, HiloAdquisicion, SesionMedicion, prefijo_csv
+from nucleo import conexion
+from nucleo.adquisicion import CALIBRANDO, DESCONECTADO, MIDIENDO, HiloAdquisicion, SesionMedicion, prefijo_csv
 from nucleo.simulador import DispositivoSimulado
 from ui.bandeja import ICONO_ALERTA, ICONO_APAGADO, ICONO_DESCANSO, ICONO_MIDIENDO, Bandeja, crear_icono
 from sistema import autoinicio
@@ -140,6 +141,7 @@ class AplicacionRSI(QObject):
             self.funcion_abrir_dispositivo(simulacion),
             self.carpeta_datos,
             prefijo_csv(self.constantes, simulacion),
+            reconectar=not simulacion,
         )
 
         self.hilo = HiloAdquisicion(sesion)
@@ -147,11 +149,11 @@ class AplicacionRSI(QObject):
         self.hilo.bloque_procesado.connect(self.al_procesar_bloque)
         self.hilo.intervalo_cerrado.connect(self.al_cerrar_intervalo)
         self.hilo.fatiga_detectada.connect(self.al_detectar_fatiga)
+        self.hilo.puerto_conectado.connect(self.al_conectar_puerto)
         self.hilo.finished.connect(self.al_terminar_hilo)
 
         # Si se enciende durante un descanso, la medición parte con la alerta en pausa.
         self.descansos.conectar_medicion(self.hilo)
-        self.reloj_uso.empezar_medicion()
         self.linea_base_mostrada = False
 
         self.ventana.medicion_iniciada(self.parametros["TREND_INTERVAL_S"])
@@ -189,15 +191,10 @@ class AplicacionRSI(QObject):
             velocidad = self.ventana.velocidad()
             inicio_rampa_s = self.constantes["SIM_BASELINE_DURATION_S"]
             fs = self.original.fs
-            return lambda: DispositivoSimulado(escenario, fs, inicio_rampa_s, velocidad)
+            return lambda detener, avisar: DispositivoSimulado(escenario, fs, inicio_rampa_s, velocidad)
 
-        def abrir_bitalino_real():
-            raise RuntimeError(
-                "La conexión automática con el BITalino real se agrega en la Fase 6. "
-                "Por ahora use el modo Simulación."
-            )
-
-        return abrir_bitalino_real
+        # BITalino real: lo busca, se conecta y, si se corta, lo vuelve a buscar.
+        return conexion.ConectorBitalino(self.configuracion["conexion"], self.constantes["PUERTO"])
 
     def guardar_modo(self):
         simulacion = self.configuracion["simulacion"]
@@ -211,10 +208,19 @@ class AplicacionRSI(QObject):
     def al_cambiar_estado(self, estado, detalle):
         self.estado = estado
         self.actualizar_estado()
+        # El reloj de uso parte cuando llegan los primeros datos y sigue durante una reconexión.
+        if estado in (CALIBRANDO, MIDIENDO) and not self.reloj_uso.midiendo:
+            self.reloj_uso.empezar_medicion()
         if estado == CALIBRANDO:
             self.mostrar_detalle(texto_calibracion(self.parametros["BASELINE_DURATION_S"]))
-        elif estado == ERROR:
+        elif detalle:  # error, o en qué va la búsqueda del BITalino
             self.mostrar_detalle(detalle)
+
+    def al_conectar_puerto(self, puerto):
+        """El BITalino respondió en 'puerto': se recuerda para probarlo primero la próxima vez."""
+        self.configuracion["conexion"]["ultimo_puerto"] = puerto
+        self.configuracion.guardar()
+        self.mostrar_detalle(f"Conectado al BITalino en {puerto}")
 
     def al_procesar_bloque(self, info):
         self.ventana.mostrar_panel(texto_panel(info, self.constantes, self.parametros, self.estado))
@@ -336,7 +342,10 @@ class AplicacionRSI(QObject):
                 print(texto)
 
     def puertos_disponibles(self):
-        return []
+        try:
+            return conexion.todos_los_puertos()
+        except Exception:  # sin permisos para listar puertos, etc.: se escribe a mano
+            return []
 
     def abrir_carpeta_datos(self):
         self.carpeta_datos.mkdir(parents=True, exist_ok=True)

@@ -3,9 +3,11 @@ Ciclo de medición: lee bloques del dispositivo (BITalino real o simulado), calc
 RMS y MDF con ProcesadorEMG del original, los agrupa con ReglaFatiga y guarda el CSV.
 
 Es una réplica de la celda "Adquisición de sEMG" de Código_Bitalino_Python.py
-(líneas 380-447), con dos cambios pedidos para la app:
+(líneas 380-447), con tres cambios pedidos para la app:
 - la medición dura hasta que se llama detener() (el original mide DURACION = 120 s);
-- el CSV lleva fecha y hora en el nombre (uno por sesión).
+- el CSV lleva fecha y hora en el nombre (uno por sesión);
+- con el BITalino real, si se pierde la conexión se vuelve a conectar sin cortar la
+  sesión (se mantienen la línea base y el CSV).
 
 - SesionMedicion: el ciclo en Python puro. Avisa lo que pasa a un "oyente" (ver la
   clase Oyente). El modo --headless usa un oyente que imprime.
@@ -69,6 +71,9 @@ class Oyente:
     def al_detectar_fatiga(self, resumen):
         pass
 
+    def al_conectar(self, puerto):
+        pass
+
 
 def cerrar_dispositivo(dispositivo, adquisicion_iniciada):
     """device.stop() y close(). Si el dispositivo ya se desconectó pueden fallar: se ignora."""
@@ -96,17 +101,23 @@ def prefijo_csv(constantes, simulacion):
 
 
 class SesionMedicion:
-    def __init__(self, original, parametros, abrir_dispositivo, carpeta_datos, prefijo_csv, oyente=None):
+    def __init__(
+        self, original, parametros, abrir_dispositivo, carpeta_datos, prefijo_csv, oyente=None, reconectar=False
+    ):
         """
         original: CodigoOriginal (ProcesadorEMG y constantes).
         parametros: parámetros de detección (TREND_INTERVAL_S, umbrales, etc.).
-        abrir_dispositivo: función sin argumentos que devuelve un dispositivo listo para start().
+        abrir_dispositivo(detener, avisar): función que devuelve un dispositivo listo para
+            start(), o None si se pidió detener mientras se conectaba. "detener" es un
+            threading.Event y "avisar(estado, detalle)" sirve para mostrar el avance.
         carpeta_datos: dónde se guarda el CSV de la sesión.
         prefijo_csv: inicio del nombre del CSV (ej. "EMG_features").
+        reconectar: True con el BITalino real (si falla una lectura, se vuelve a conectar).
         """
         self.original = original
         self.constantes = original.constantes
         self.abrir_dispositivo = abrir_dispositivo
+        self.reconectar = reconectar
         self.oyente = oyente or Oyente()
         self.ruta_csv = Path(carpeta_datos) / nombre_csv(prefijo_csv, datetime.now())
 
@@ -159,9 +170,10 @@ class SesionMedicion:
         try:
             # Primero se conecta, para no dejar un CSV vacío si no hay dispositivo.
             self.cambiar_estado(CONECTANDO)
-            dispositivo = self.abrir_dispositivo()
+            dispositivo = self.abrir_dispositivo(self.pedido_detener, self.cambiar_estado)
             if dispositivo is None:  # se pidió detener mientras se conectaba
                 return
+            self.avisar_conexion(dispositivo)
 
             with open(self.ruta_csv, "w", newline="", encoding="utf-8") as archivo_features:
                 escritor_features = csv.writer(archivo_features)
@@ -175,7 +187,15 @@ class SesionMedicion:
 
                 while not self.pedido_detener.is_set():
                     self.aplicar_comandos()
-                    trama = dispositivo.read(self.constantes["N"])
+                    try:
+                        trama = dispositivo.read(self.constantes["N"])
+                    except Exception as error:
+                        if not self.reconectar:
+                            raise
+                        dispositivo = self.volver_a_conectar(dispositivo, error)
+                        if dispositivo is None:  # se pidió detener mientras se reconectaba
+                            break
+                        continue
                     self.procesar_trama(trama, escritor_features, archivo_features)
 
                 # Línea 443: guardar el intervalo final, incluso si está incompleto
@@ -191,6 +211,36 @@ class SesionMedicion:
                 cerrar_dispositivo(dispositivo, adquisicion_iniciada)
             if self.estado != ERROR:
                 self.cambiar_estado(DESCONECTADO)
+
+    def avisar_conexion(self, dispositivo):
+        puerto = getattr(dispositivo, "puerto", None)  # el simulado no tiene puerto
+        if puerto:
+            self.oyente.al_conectar(puerto)
+
+    def volver_a_conectar(self, dispositivo, error):
+        """
+        Se perdió la conexión: cierra el puerto y busca el BITalino de nuevo hasta
+        encontrarlo (o hasta que se pida detener). Devuelve el dispositivo ya iniciado, o None.
+        """
+        cerrar_dispositivo(dispositivo, adquisicion_iniciada=True)
+        self.cambiar_estado(CONECTANDO, f"Se perdió la conexión ({error}). Reconectando…")
+        while not self.pedido_detener.is_set():
+            nuevo = self.abrir_dispositivo(self.pedido_detener, self.cambiar_estado)
+            if nuevo is None:
+                return None
+            try:
+                nuevo.start(self.original.fs, [self.constantes["CANAL"]])
+            except Exception as error_inicio:
+                cerrar_dispositivo(nuevo, adquisicion_iniciada=False)
+                self.cambiar_estado(CONECTANDO, f"No se pudo iniciar la adquisición ({error_inicio}).")
+                continue
+            self.avisar_conexion(nuevo)
+            # Filtro nuevo: parte del primer valor del bloque siguiente, igual que al
+            # encender (línea 92 del original), sin arrastrar la señal de antes del corte.
+            self.procesador_emg = self.original.ProcesadorEMG(self.original.fs)
+            self.cambiar_estado(CALIBRANDO if self.regla.calibrando() else MIDIENDO)
+            return nuevo
+        return None
 
     def procesar_trama(self, trama, escritor_features, archivo_features):
         """Procesa un bloque leído del dispositivo (líneas 400-440)."""
@@ -261,6 +311,7 @@ class HiloAdquisicion(QThread):
     bloque_procesado = Signal(object)  # InfoBloque
     intervalo_cerrado = Signal(object, object)  # ResumenIntervalo, línea base (o None)
     fatiga_detectada = Signal(object)  # ResumenIntervalo
+    puerto_conectado = Signal(str)  # puerto del BITalino que respondió
 
     def __init__(self, sesion):
         super().__init__()
@@ -296,3 +347,6 @@ class HiloAdquisicion(QThread):
 
     def al_detectar_fatiga(self, resumen):
         self.fatiga_detectada.emit(resumen)
+
+    def al_conectar(self, puerto):
+        self.puerto_conectado.emit(puerto)
