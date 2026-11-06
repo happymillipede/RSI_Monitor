@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# PyInstaller
+build/
+dist/
+
+# Jupyter y sistema
+.ipynb_checkpoints/
+.DS_Store
+
+# Datos del usuario (se crean al usar la app)
+datos/
+config.json
+config.json.dañado

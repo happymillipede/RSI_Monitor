@@ -1,0 +1,245 @@
+"""
+Ciclo de medición: lee bloques del dispositivo (BITalino real o simulado), calcula
+RMS y MDF con ProcesadorEMG del original, los agrupa con ReglaFatiga y guarda el CSV.
+
+Es una réplica de la celda "Adquisición de sEMG" de Código_Bitalino_Python.py
+(líneas 380-447), con dos cambios pedidos para la app:
+- la medición dura hasta que se llama detener() (el original mide DURACION = 120 s);
+- el CSV lleva fecha y hora en el nombre (uno por sesión).
+
+SesionMedicion avisa lo que pasa a un "oyente" (ver la clase Oyente). La app usa un
+oyente que manda señales Qt a la ventana; el modo --headless usa uno que imprime.
+
+Qué se puede editar aquí: ENCABEZADO_CSV y MUESTRAS_RECIENTES.
+"""
+
+import csv
+import queue
+import statistics
+import threading
+from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
+
+from nucleo.regla_fatiga import ReglaFatiga
+from nucleo.simulador import COLUMNA_EMG
+
+ENCABEZADO_CSV = ["Time (s)", "Mean RMS (ADC)", "Median MDF (Hz)"]  # línea 386
+MUESTRAS_RECIENTES = 8  # línea 411: el panel muestra las últimas 8 muestras
+FORMATO_FECHA_CSV = "%Y-%m-%d_%H-%M-%S"
+
+# Estados de la medición que se muestran en la ventana
+DESCONECTADO = "Desconectado"
+BUSCANDO = "Buscando"
+CONECTANDO = "Conectando"
+CALIBRANDO = "Calibrando línea base"
+MIDIENDO = "Midiendo"
+ERROR = "Error"
+
+
+@dataclass
+class InfoBloque:
+    """Datos del panel de información, los mismos de actualizar_panel_adquisicion()."""
+
+    n_medicion: int
+    ultimo_valor_emg: float
+    ultimo_rms: float
+    ultimo_mdf: float
+    ultima_trama: object
+    muestras_recientes: list = field(default_factory=list)
+
+
+class Oyente:
+    """Recibe los avisos de la sesión. Por defecto no hace nada; se reemplazan los que se necesiten."""
+
+    def al_cambiar_estado(self, estado, detalle=""):
+        pass
+
+    def al_procesar_bloque(self, info):
+        pass
+
+    def al_cerrar_intervalo(self, resumen, linea_base):
+        pass
+
+    def al_detectar_fatiga(self, resumen):
+        pass
+
+
+def cerrar_dispositivo(dispositivo, adquisicion_iniciada):
+    """device.stop() y close(). Si el dispositivo ya se desconectó pueden fallar: se ignora."""
+    try:
+        if adquisicion_iniciada:
+            dispositivo.stop()
+    except Exception:
+        pass
+    try:
+        dispositivo.close()
+    except Exception:
+        pass
+
+
+def nombre_csv(prefijo, fecha):
+    """Ej.: EMG_features_2026-11-06_10-30-00.csv"""
+    return f"{prefijo}_{fecha.strftime(FORMATO_FECHA_CSV)}.csv"
+
+
+def prefijo_csv(constantes, simulacion):
+    """Usa los nombres del original: "EMG_features" (línea 185) o "EMG_simulated_features" (línea 471)."""
+    if simulacion:
+        return Path(constantes.get("SIM_OUTPUT_CSV", "EMG_simulated_features.csv")).stem
+    return Path(constantes.get("archivo_features_csv", "EMG_features.csv")).stem
+
+
+class SesionMedicion:
+    def __init__(self, original, parametros, abrir_dispositivo, carpeta_datos, prefijo_csv, oyente=None):
+        """
+        original: CodigoOriginal (ProcesadorEMG y constantes).
+        parametros: parámetros de detección (TREND_INTERVAL_S, umbrales, etc.).
+        abrir_dispositivo: función sin argumentos que devuelve un dispositivo listo para start().
+        carpeta_datos: dónde se guarda el CSV de la sesión.
+        prefijo_csv: inicio del nombre del CSV (ej. "EMG_features").
+        """
+        self.original = original
+        self.constantes = original.constantes
+        self.abrir_dispositivo = abrir_dispositivo
+        self.oyente = oyente or Oyente()
+        self.ruta_csv = Path(carpeta_datos) / nombre_csv(prefijo_csv, datetime.now())
+
+        self.regla = ReglaFatiga.desde_parametros(parametros)
+        self.procesador_emg = original.ProcesadorEMG(original.fs)  # línea 324
+
+        # Líneas 321 y 327-331
+        self.n_medicion = 0
+        self.muestras_recientes = []
+        self.ultima_trama = None
+        self.ultimo_valor_emg = float("nan")
+        self.ultimo_rms = float("nan")
+        self.ultimo_mdf = float("nan")
+
+        self.estado = DESCONECTADO
+        self.pedido_detener = threading.Event()
+        self.comandos = queue.SimpleQueue()
+
+    # --- Órdenes que llegan desde otro hilo (la ventana). Se aplican antes del bloque siguiente. ---
+
+    def detener(self):
+        self.pedido_detener.set()
+
+    def pausar_alertas(self, pausar):
+        """Durante un descanso no se evalúa la fatiga."""
+        self.comandos.put(("pausar", pausar))
+
+    def rearmar_alerta(self):
+        """Al terminar un descanso la alerta vuelve a estar disponible."""
+        self.comandos.put(("rearmar", None))
+
+    def aplicar_comandos(self):
+        while not self.comandos.empty():
+            orden, valor = self.comandos.get()
+            if orden == "pausar":
+                self.regla.pausada = valor
+            elif orden == "rearmar":
+                self.regla.rearmar()
+
+    # --- Ciclo de medición ---
+
+    def cambiar_estado(self, estado, detalle=""):
+        self.estado = estado
+        self.oyente.al_cambiar_estado(estado, detalle)
+
+    def ejecutar(self):
+        """Mide hasta que se llame detener(). Réplica de las líneas 380-447."""
+        dispositivo = None
+        adquisicion_iniciada = False
+        try:
+            with open(self.ruta_csv, "w", newline="", encoding="utf-8") as archivo_features:
+                escritor_features = csv.writer(archivo_features)
+                escritor_features.writerow(ENCABEZADO_CSV)
+                archivo_features.flush()
+
+                self.cambiar_estado(CONECTANDO)
+                dispositivo = self.abrir_dispositivo()
+                if dispositivo is None:  # se pidió detener mientras se conectaba
+                    return
+
+                # Línea 391
+                dispositivo.start(self.original.fs, [self.constantes["CANAL"]])
+                adquisicion_iniciada = True
+                self.cambiar_estado(CALIBRANDO)
+
+                while not self.pedido_detener.is_set():
+                    self.aplicar_comandos()
+                    trama = dispositivo.read(self.constantes["N"])
+                    self.procesar_trama(trama, escritor_features, archivo_features)
+
+                # Línea 443: guardar el intervalo final, incluso si está incompleto
+                self.cerrar_intervalo(escritor_features, archivo_features)
+
+        except Exception as error:
+            self.cambiar_estado(ERROR, str(error))
+            raise
+
+        finally:
+            # Líneas 445-447 (además se cierra el puerto para poder volver a conectar)
+            if dispositivo is not None:
+                cerrar_dispositivo(dispositivo, adquisicion_iniciada)
+            if self.estado != ERROR:
+                self.cambiar_estado(DESCONECTADO)
+
+    def procesar_trama(self, trama, escritor_features, archivo_features):
+        """Procesa un bloque leído del dispositivo (líneas 400-440)."""
+        periodo = self.constantes["PERIODO"]
+        mediciones_bloque = []
+
+        for muestra in trama:
+            self.n_medicion += 1
+            tiempo = self.n_medicion * periodo
+            valor = int(muestra[COLUMNA_EMG])
+
+            self.ultima_trama = muestra
+            self.ultimo_valor_emg = valor
+            self.muestras_recientes.append((tiempo, valor))
+            self.muestras_recientes[:] = self.muestras_recientes[-MUESTRAS_RECIENTES:]
+
+            mediciones_bloque.append([tiempo, valor])
+
+        if not mediciones_bloque:
+            return
+
+        tiempos_bloque = [tiempo for tiempo, _ in mediciones_bloque]
+        rms, mdf = self.procesador_emg.procesar_bloque(mediciones_bloque)
+        self.ultimo_rms = rms
+        self.ultimo_mdf = mdf
+        self.oyente.al_procesar_bloque(self.info_bloque())
+
+        tiempo_bloque = statistics.mean(tiempos_bloque)
+        resumen = self.regla.agregar_bloque(tiempo_bloque, rms, mdf)
+        if resumen is not None:
+            self.registrar_resumen(resumen, escritor_features, archivo_features)
+
+    def cerrar_intervalo(self, escritor_features, archivo_features):
+        resumen = self.regla.cerrar_intervalo()
+        if resumen is not None:
+            self.registrar_resumen(resumen, escritor_features, archivo_features)
+
+    def registrar_resumen(self, resumen, escritor_features, archivo_features):
+        """Guarda el resumen en el CSV (líneas 291-294) y avisa al oyente."""
+        escritor_features.writerow([resumen.tiempo, resumen.rms, resumen.mdf])
+        archivo_features.flush()
+
+        if self.estado == CALIBRANDO and not self.regla.calibrando():
+            self.cambiar_estado(MIDIENDO)
+
+        self.oyente.al_cerrar_intervalo(resumen, self.regla.linea_base())
+        if resumen.alerta:
+            self.oyente.al_detectar_fatiga(resumen)
+
+    def info_bloque(self):
+        return InfoBloque(
+            n_medicion=self.n_medicion,
+            ultimo_valor_emg=self.ultimo_valor_emg,
+            ultimo_rms=self.ultimo_rms,
+            ultimo_mdf=self.ultimo_mdf,
+            ultima_trama=self.ultima_trama,
+            muestras_recientes=list(self.muestras_recientes),
+        )
