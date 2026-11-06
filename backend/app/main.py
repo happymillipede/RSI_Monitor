@@ -134,6 +134,11 @@ def crear_app(servicio, puerto):
     async def puertos():
         return servicio.puertos()
 
+    @app.post("/api/conexion/reconectar", response_model=mensajes.MensajeEstado)
+    async def reconectar(pedido: mensajes.PedidoReconectar):
+        servicio.reconectar(pedido)
+        return servicio.foto()
+
     # --- Configuración ---
 
     @app.get("/api/config", response_model=mensajes.RespuestaConfig)

@@ -18,7 +18,8 @@ aquí cada operación corre en un hilo auxiliar con un límite de tiempo
 (ejecutar_con_limite) y, si se pasa o si el usuario aprieta Apagar, se
 cierra el puerto.
 
-Qué se puede editar aquí: PUERTO_ENTRANTE_WINDOWS, REVISION_S y LIMITE_DETENER_S.
+Qué se puede editar aquí: PUERTO_ENTRANTE_WINDOWS, REVISION_S, LIMITE_DETENER_S y los
+textos de explicar_error().
 Los tiempos de espera están en config.json (sección "conexion").
 """
 
@@ -179,14 +180,48 @@ class ConectorBitalino:
         self.puerto_original = puerto_original
         self.abrir = abrir
         self.buscar_puertos = buscar_puertos
+        # Puerto elegido en el panel de conexión mientras se busca: se prueba primero.
+        self.puerto_preferido = None
+        self.despertar = threading.Event()
 
     def candidatos(self):
-        return lista_candidatos(
+        candidatos = lista_candidatos(
             self.conexion["puerto_manual"],
             self.conexion["ultimo_puerto"],
             self.puerto_original,
             self.buscar_puertos(),
         )
+        if self.puerto_preferido:
+            candidatos = [self.puerto_preferido] + [p for p in candidatos if p != self.puerto_preferido]
+        return candidatos
+
+    def preferir(self, puerto):
+        """
+        Lo llama el panel de conexión mientras se busca (otro hilo): el próximo intento
+        empieza por 'puerto' (None = buscar en todos) y no espera.
+        """
+        self.puerto_preferido = puerto
+        self.despertar.set()
+
+    def una_vuelta(self, detener, avisar):
+        """
+        Prueba cada puerto candidato una vez. Devuelve el dispositivo conectado, o None si
+        se pidió detener. Si ninguno responde, lanza LookupError con los motivos.
+        """
+        errores = []
+        for puerto in self.candidatos():
+            if detener.is_set():
+                return None
+            avisar(CONECTANDO, f"Probando {puerto}…")
+            try:
+                return self.abrir(puerto, self.conexion["timeout_s"], detener)
+            except InterruptedError:
+                return None
+            except Exception as error:
+                errores.append(explicar_error(puerto, error))
+        if not errores:
+            raise LookupError("No se encontró ningún puerto Bluetooth del BITalino.")
+        raise LookupError(" ".join(errores))
 
     def __call__(self, detener, avisar):
         """
@@ -197,20 +232,37 @@ class ConectorBitalino:
         intento = 0
         while not detener.is_set():
             avisar(BUSCANDO, "Buscando el BITalino…")
-            errores = []
-            for puerto in self.candidatos():
-                if detener.is_set():
-                    return None
-                avisar(CONECTANDO, f"Probando {puerto}…")
-                try:
-                    return self.abrir(puerto, self.conexion["timeout_s"], detener)
-                except Exception as error:
-                    errores.append(f"{puerto}: {error or type(error).__name__}")
+            self.despertar.clear()
+            try:
+                return self.una_vuelta(detener, avisar)
+            except LookupError as error:
+                motivo = str(error)
 
             espera = tiempo_de_espera(intento, self.conexion["espera_inicial_s"], self.conexion["espera_maxima_s"])
-            motivo = "; ".join(errores) if errores else "no hay puertos Bluetooth del BITalino"
-            avisar(BUSCANDO, f"No se encontró el BITalino ({motivo}). Nuevo intento en {espera:g} s.")
-            if detener.wait(espera):
+            avisar(BUSCANDO, f"{motivo} Nuevo intento en {espera:g} s.")
+            if self.esperar(espera, detener):
                 return None
             intento += 1
         return None
+
+    def esperar(self, segundos, detener):
+        """Espera entre intentos. Devuelve True si se pidió detener; se corta antes si se eligió un puerto."""
+        restante = segundos
+        while restante > 0 and not self.despertar.is_set():
+            paso = min(restante, REVISION_S)
+            if detener.wait(paso):
+                return True
+            restante -= paso
+        return detener.is_set()
+
+
+def explicar_error(puerto, error):
+    """El error de un puerto en palabras simples."""
+    texto = str(error) or type(error).__name__
+    if isinstance(error, TimeoutError):
+        return f"{puerto}: el BITalino no respondió. Revisen que esté encendido y cerca del computador."
+    if "could not open port" in texto or isinstance(error, FileNotFoundError):
+        return f"{puerto}: no se pudo abrir el puerto. Revisen que el BITalino esté emparejado por Bluetooth."
+    if "Access is denied" in texto or isinstance(error, PermissionError):
+        return f"{puerto}: el puerto está ocupado o sin permiso. Cierren otros programas que lo usen."
+    return f"{puerto}: {texto}."

@@ -11,6 +11,7 @@ from app.nucleo.conexion import (
     BitalinoConLimite,
     ConectorBitalino,
     ejecutar_con_limite,
+    explicar_error,
     lista_candidatos,
     puertos_detectados,
     tiempo_de_espera,
@@ -200,14 +201,51 @@ def test_prueba_cada_puerto_y_reintenta_con_espera_creciente():
         return f"BITalino en {puerto}"
 
     avisos = []
+    detalles = []
     conector = ConectorBitalino(conexion_por_defecto(), "/dev/tty.bitalino", abrir, lambda: ["COM3"])
     detener = DetenerFalso()
-    dispositivo = conector(detener, lambda estado, detalle: avisos.append(estado))
+
+    def avisar(estado, detalle):
+        avisos.append(estado)
+        detalles.append(detalle)
+
+    dispositivo = conector(detener, avisar)
 
     assert dispositivo == "BITalino en COM5"
     assert probados == ["COM5", "/dev/tty.bitalino", "COM3"] * 2 + ["COM5"]
-    assert detener.esperas == [1, 2]
+    # Esperó 1 s y después 2 s (de a poco, para poder cortar la espera).
+    assert sum(detener.esperas) == pytest.approx(3)
+    assert [d for d in detalles if "Nuevo intento" in d][0].endswith("Nuevo intento en 1 s.")
+    assert [d for d in detalles if "Nuevo intento" in d][1].endswith("Nuevo intento en 2 s.")
+    assert "COM5: el BITalino no respondió" in [d for d in detalles if "Nuevo intento" in d][0]
     assert BUSCANDO in avisos and CONECTANDO in avisos
+
+
+def test_elegir_un_puerto_lo_prueba_primero_y_corta_la_espera():
+    probados = []
+    conector = None
+
+    def abrir(puerto, limite_s, detener):
+        probados.append(puerto)
+        if puerto != "COM7":
+            if len(probados) == 1:
+                threading.Timer(0.05, conector.preferir, ["COM7"]).start()
+            raise OSError("no existe")
+        return "BITalino en COM7"
+
+    conector = ConectorBitalino(
+        conexion_por_defecto(espera_inicial_s=30), "/dev/tty.bitalino", abrir, lambda: []
+    )
+    inicio = time.monotonic()
+    assert conector(threading.Event(), lambda *aviso: None) == "BITalino en COM7"
+    assert time.monotonic() - inicio < 5  # no esperó los 30 s
+    assert probados[-1] == "COM7"
+
+
+def test_errores_en_palabras_simples():
+    assert "no se pudo abrir el puerto" in explicar_error("COM3", OSError("could not open port 'COM3'"))
+    assert "no respondió" in explicar_error("COM3", TimeoutError("x"))
+    assert "ocupado" in explicar_error("COM3", PermissionError("x"))
 
 
 def test_apagar_mientras_busca_devuelve_none():

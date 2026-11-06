@@ -31,3 +31,23 @@
   background: #fef5e7;
   font-size: 0.9rem;
 }
+
+.puertos {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--borde);
+}
+
+.fila {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.fila select {
+  flex: 1;
+  min-width: 0;
+}

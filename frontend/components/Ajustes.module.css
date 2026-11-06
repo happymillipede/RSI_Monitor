@@ -1,0 +1,52 @@
+/* Estilos de los ajustes. */
+
+.ajustes summary {
+  font-weight: 700;
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+
+.nota {
+  margin: 8px 0;
+  font-size: 0.85rem;
+  color: var(--texto-suave);
+}
+
+.campo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--borde);
+}
+
+.campo > span:first-child {
+  display: flex;
+  flex-direction: column;
+}
+
+.original {
+  color: var(--texto-suave);
+  font-size: 0.75rem;
+}
+
+.cambiado {
+  color: var(--naranjo);
+  font-weight: 600;
+}
+
+.entrada {
+  white-space: nowrap;
+}
+
+.entrada input {
+  width: 80px;
+}
+
+.botones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}

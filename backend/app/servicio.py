@@ -10,6 +10,10 @@ Servicio: une todas las piezas del backend. main.py solo traduce rutas a llamada
   navegadores conectados al WebSocket.
 - Una tarea corre cada segundo: avanza el reloj de uso, termina el descanso cuando se
   cumple el tiempo y envía el mensaje "reloj".
+- Panel de conexión: con la medición apagada, "Reconectar" (un puerto) o "Detectar
+  automáticamente" conectan el BITalino en un hilo y lo dejan listo para el próximo
+  Encender. Si la conexión se corta midiendo, la sesión lo busca sola con espera
+  creciente; elegir un puerto en ese momento hace que se pruebe primero.
 
 Alerta de fatiga (la regla está en nucleo/regla_fatiga.py):
     alerta -> pendiente (sin duplicados) -> Aceptar -> descanso -> fin -> la alerta se rearma
@@ -30,9 +34,9 @@ from pathlib import Path
 from app import almacenamiento, mensajes
 from app.almacenamiento import LIMITES_PARAMETROS, PARAMETROS_DETECCION, ArchivoDescansos, Configuracion
 from app.nucleo import conexion
-from app.nucleo.adquisicion import BUSCANDO, CALIBRANDO, CONECTANDO, ERROR, MIDIENDO, Oyente, SesionMedicion, prefijo_csv
+from app.nucleo.adquisicion import BUSCANDO, CALIBRANDO, CONECTANDO, DESCONECTADO, ERROR, MIDIENDO, Oyente, SesionMedicion, prefijo_csv
 from app.nucleo.cargador_original import cargar_original
-from app.nucleo.conexion import ConectorBitalino
+from app.nucleo.conexion import BitalinoConLimite, ConectorBitalino, explicar_error, puertos_detectados
 from app.nucleo.regla_fatiga import ACLARACION_MEDICA
 from app.nucleo.simulador import DispositivoSimulado
 from app.estado import EstadoApp
@@ -55,6 +59,7 @@ TEXTO_DOCKER = (
 
 # Estado de la medición -> estado de la conexión que muestra el panel
 CONEXION_SEGUN_MEDICION = {
+    DESCONECTADO: "Desconectado",
     BUSCANDO: "Buscando",
     CONECTANDO: "Conectando",
     CALIBRANDO: "Conectado",
@@ -131,6 +136,13 @@ class Servicio:
         self.loop = None
         self.sesion = None
         self.hilo = None
+        self.conector = None  # ConectorBitalino de la sesión real en curso
+        self.hilo_conexion = None  # hilo de "Reconectar" con la medición apagada
+        self.detener_conexion = None
+        self.dispositivo_listo = None  # BITalino ya conectado, esperando Encender
+        # Cómo se abre y se busca el BITalino real (las pruebas ponen uno falso).
+        self.abrir_bitalino = BitalinoConLimite
+        self.buscar_puertos = puertos_detectados
 
     # --- Ciclo de vida del servidor ---
 
@@ -148,6 +160,9 @@ class Servicio:
         if sesion is not None:
             sesion.detener()
             hilo.join(ESPERA_FIN_HILO_S)
+        if self.detener_conexion is not None:
+            self.detener_conexion.set()
+        self.cerrar_dispositivo_listo()
         if self.descansos.en_descanso():
             self.descansos.terminar(completado=False)
         self.reloj_uso.terminar_medicion()
@@ -190,9 +205,13 @@ class Servicio:
     def encender(self, pedido):
         if self.sesion is not None:
             raise ErrorServicio("La medición ya está encendida.")
+        if self.hilo_conexion is not None:
+            raise ErrorServicio("Se está conectando el BITalino: esperen a que termine.")
         simulacion = pedido.modo == "simulacion"
         if not simulacion and self.en_docker:
             raise ErrorServicio(TEXTO_DOCKER)
+        if simulacion:
+            self.cerrar_dispositivo_listo()
 
         escenario = velocidad = None
         umbrales_sim = False
@@ -208,7 +227,7 @@ class Servicio:
                 )
 
         else:
-            abrir_dispositivo = ConectorBitalino(self.configuracion["conexion"], self.constantes["PUERTO"])
+            abrir_dispositivo = self.abridor_real()
 
         parametros = self.configuracion.parametros_deteccion(self.constantes, umbrales_sim)
         sesion = SesionMedicion(
@@ -228,6 +247,24 @@ class Servicio:
         self.hilo = threading.Thread(target=self.ejecutar_sesion, args=(sesion,), name="medicion", daemon=True)
         self.hilo.start()
         self.enviar(self.foto())
+
+    def abridor_real(self):
+        """
+        Función abrir_dispositivo() para el BITalino real: la primera vez usa el que dejó
+        listo el panel de conexión (si hay); después lo busca con el ConectorBitalino.
+        """
+        self.conector = self.crear_conector()
+        listo = [self.dispositivo_listo]
+        self.dispositivo_listo = None
+
+        def abrir_dispositivo(detener, avisar):
+            dispositivo = listo.pop() if listo else None
+            if dispositivo is not None:
+                dispositivo.detener = detener  # para que Apagar corte sus lecturas
+                return dispositivo
+            return self.conector(detener, avisar)
+
+        return abrir_dispositivo
 
     def opciones_simulacion(self, pedido):
         """Escenario, velocidad y umbrales del pedido; lo que no viene sale de config.json."""
@@ -265,12 +302,15 @@ class Servicio:
 
     def al_cambiar_estado(self, estado, detalle=""):
         self.estado.estado_medicion = estado
+        if estado == ERROR:
+            detalle = f"La medición se detuvo por un error: {detalle}"
+        self.al_cambiar_conexion(estado, detalle)
+
+    def al_cambiar_conexion(self, estado, detalle=""):
+        """estado: un estado de la medición (Buscando, Conectando, Midiendo...)."""
         if estado in CONEXION_SEGUN_MEDICION:
             self.estado.estado_conexion = CONEXION_SEGUN_MEDICION[estado]
-            if estado == ERROR:
-                self.estado.detalle_conexion = f"La medición se detuvo por un error: {detalle}"
-            else:
-                self.estado.detalle_conexion = detalle
+            self.estado.detalle_conexion = detalle
         self.enviar(self.mensaje_conexion())
 
     def al_conectar(self, puerto, version):
@@ -312,6 +352,7 @@ class Servicio:
             return
         self.sesion = None
         self.hilo = None
+        self.conector = None
         self.estado.encendida = False
         if self.estado.estado_conexion != "Error":
             self.estado.estado_conexion = "Desconectado"
@@ -435,6 +476,8 @@ class Servicio:
         cambios = dict(pedido.parametros or {})
         if pedido.restaurar:
             cambios = {nombre: None for nombre in PARAMETROS_DETECCION}
+            por_defecto = self.configuracion.por_defecto["descansos"]["duracion_fatiga_min"]
+            self.configuracion["descansos"]["duracion_fatiga_min"] = por_defecto
         for nombre, valor in cambios.items():
             if nombre not in PARAMETROS_DETECCION:
                 raise ValueError(f"{nombre} no es un parámetro de detección.")
@@ -447,6 +490,86 @@ class Servicio:
         self.configuracion.guardar()
         self.enviar(self.foto())
         return self.respuesta_config()
+
+    # --- Panel de conexión ---
+
+    def reconectar(self, pedido):
+        """pedido.puerto: el puerto elegido, o None para detectar automáticamente."""
+        if self.en_docker:
+            raise ErrorServicio(TEXTO_DOCKER)
+        if self.sesion is not None:
+            self.reconectar_midiendo(pedido.puerto)
+            return
+        if self.hilo_conexion is not None:
+            raise ErrorServicio("Ya se está buscando el BITalino.")
+
+        self.cerrar_dispositivo_listo()
+        self.detener_conexion = threading.Event()
+        self.hilo_conexion = threading.Thread(
+            target=self.conectar_en_hilo, args=(pedido.puerto, self.detener_conexion), name="conexion", daemon=True
+        )
+        self.al_cambiar_conexion(BUSCANDO if pedido.puerto is None else CONECTANDO, "")
+        self.hilo_conexion.start()
+
+    def reconectar_midiendo(self, puerto):
+        if self.estado.modo != "real":
+            raise ErrorServicio("En simulación no hay un BITalino que reconectar.")
+        if self.estado.estado_conexion == "Conectado":
+            raise ErrorServicio("El BITalino ya está conectado. Para cambiar de puerto, apaguen la medición.")
+        self.conector.preferir(puerto)
+
+    def crear_conector(self):
+        return ConectorBitalino(
+            self.configuracion["conexion"], self.constantes["PUERTO"], self.abrir_bitalino, self.buscar_puertos
+        )
+
+    def conectar_en_hilo(self, puerto, detener):
+        """Corre en el hilo de conexión: un intento con el puerto elegido, o una vuelta por todos."""
+        conexion = self.configuracion["conexion"]
+
+        def avisar(estado, detalle=""):
+            self.desde_hilo(self.al_cambiar_conexion, estado, detalle)
+
+        try:
+            if puerto is None:
+                dispositivo = self.crear_conector().una_vuelta(detener, avisar)
+            else:
+                avisar(CONECTANDO, f"Probando {puerto}…")
+                dispositivo = self.abrir_bitalino(puerto, conexion["timeout_s"], detener)
+        except InterruptedError:
+            dispositivo = None
+        except LookupError as error:
+            self.desde_hilo(self.al_fallar_conexion, str(error))
+            return
+        except Exception as error:
+            self.desde_hilo(self.al_fallar_conexion, explicar_error(puerto, error))
+            return
+        self.desde_hilo(self.al_conectar_listo, dispositivo)
+
+    def al_conectar_listo(self, dispositivo):
+        self.hilo_conexion = None
+        self.detener_conexion = None
+        if dispositivo is None:  # se cerró el servidor mientras se conectaba
+            self.al_cambiar_conexion("Desconectado")
+            return
+        self.dispositivo_listo = dispositivo
+        self.estado.estado_conexion = "Conectado"
+        self.estado.detalle_conexion = "Listo para medir: aprieten Encender."
+        self.al_conectar(dispositivo.puerto, dispositivo.version())
+
+    def al_fallar_conexion(self, texto):
+        self.hilo_conexion = None
+        self.detener_conexion = None
+        self.estado.estado_conexion = "Error"
+        self.estado.detalle_conexion = texto
+        self.enviar(self.mensaje_conexion())
+
+    def cerrar_dispositivo_listo(self):
+        if self.dispositivo_listo is not None:
+            self.dispositivo_listo.close()
+            self.dispositivo_listo = None
+            self.estado.estado_conexion = "Desconectado"
+            self.estado.detalle_conexion = ""
 
     # --- Puertos ---
 

@@ -8,6 +8,7 @@
 "use client";
 
 import { useCallback, useEffect, useReducer, useState } from "react";
+import Ajustes from "@/components/Ajustes";
 import AlertaFatiga from "@/components/AlertaFatiga";
 import BotonMedicion from "@/components/BotonMedicion";
 import CuentaRegresiva from "@/components/CuentaRegresiva";
@@ -98,8 +99,15 @@ export default function Pagina() {
               alEncender={(pedido) => ejecutar(() => api.encender(pedido))}
               alApagar={() => ejecutar(api.apagar)}
             />
-            <PanelConexion conexion={estado.conexion} simulacion={estado.medicion.modo === "simulacion"} />
+            <PanelConexion
+              conexion={estado.conexion}
+              medicion={estado.medicion}
+              ocupado={ocupado}
+              alReconectar={(pedido) => ejecutar(() => api.reconectar(pedido))}
+              alError={setError}
+            />
             <Notificaciones />
+            <Ajustes config={config} alGuardar={setConfig} alError={setError} />
           </aside>
           <main className={estilos.principal}>
             {estado.descanso.activo && (

@@ -188,6 +188,7 @@ def test_configuracion(cliente):
 
     config = cliente.put("/api/config", json={"restaurar": True}).json()
     assert all(not p["personalizado"] for p in config["parametros"])
+    assert config["duracion_fatiga_min"] == 10
 
     assert cliente.put("/api/config", json={"parametros": {"TREND_INTERVAL_S": 0}}).status_code == 400
     assert cliente.put("/api/config", json={"parametros": {"OTRO": 1}}).status_code == 400

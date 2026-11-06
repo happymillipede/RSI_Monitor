@@ -208,7 +208,7 @@ class PedidoConfig(BaseModel):
     parametros: Optional[dict[str, Optional[float]]] = None
     duracion_fatiga_min: Optional[float] = None
     usar_umbrales_sim: Optional[bool] = None
-    restaurar: bool = False  # True: todos los parámetros vuelven al original
+    restaurar: bool = False  # True: los parámetros vuelven al original y el descanso, al de config.ejemplo.json
 
 
 class PedidoReconectar(BaseModel):
