@@ -15,6 +15,11 @@ navegador (Next.js, solo muestra)  ──REST /api──▶  FastAPI (backend/ap
 - **Un solo proceso y un solo puerto.** Next.js se compila como página estática
   (`output: "export"`) y FastAPI la sirve desde `backend/estaticos/`.
 - **El frontend no procesa la señal.** Recibe datos ya calculados y envía acciones.
+- **La página compilada va en git** (`backend/estaticos/`, ~1 MB). Así, para usar la app
+  solo hace falta Python; Node.js solo se necesita para cambiar la página. Quien cambie
+  algo en `frontend/` tiene que compilarla (`python compilar.py compilar`) y hacer commit
+  de `backend/estaticos/` en el mismo commit. Cada compilación cambia algunos nombres de
+  archivos en `_next/` aunque el código sea igual: es normal.
 - **La lectura del BITalino es bloqueante**, así que corre en un hilo aparte. Cada aviso
   del hilo pasa al bucle de asyncio con `loop.call_soon_threadsafe()`: todo el estado se
   cambia en un solo hilo y FastAPI nunca se bloquea. Por eso las rutas son `async def`.
@@ -48,7 +53,7 @@ RSI_Monitor/
 │  │  └─ uso/
 │  │     ├─ reloj_uso.py          tiempo de uso de hoy y de la sesión
 │  │     └─ descansos.py          alerta pendiente, descansos, plantillas e historial
-│  ├─ estaticos/               página compilada (la crea compilar.py; no va en git)
+│  ├─ estaticos/               página compilada (la crea compilar.py; va en git, ver abajo)
 │  └─ tests/
 ├─ frontend/
 │  ├─ app/page.tsx             la página: useReducer + WebSocket + acciones REST

@@ -3,13 +3,18 @@ compilar.py: deja RSI Monitor funcionando en este computador (macOS, Windows o L
 
 Uso (desde la carpeta RSI_Monitor):
     python compilar.py              hace todo: verificar, instalar, compilar, probar e iniciar
-    python compilar.py verificar    1. revisa Python 3.10, Node.js y npm
+    python compilar.py verificar    1. revisa Python 3.10 (y Node.js y npm, si están)
     python compilar.py instalar     2. entorno virtual (.venv) + backend/requirements.txt
     python compilar.py compilar     3-4. npm ci, npm run build y copia el frontend a backend/estaticos/
-    python compilar.py probar       5. pytest, tsc --noEmit y eslint
+    python compilar.py probar       5. pytest (y tsc --noEmit y eslint, si está Node.js)
     python compilar.py iniciar      6. levanta la app en segundo plano y abre el navegador
     python compilar.py detener      7. detiene la app
     python compilar.py docker       8. (opcional) imagen Docker en modo simulación
+
+Node.js NO hace falta para usar la app: la página ya compilada está guardada en git
+(backend/estaticos/). Solo hace falta para cambiar la página (carpeta frontend/): en ese
+caso, después de cambiarla, corran "python compilar.py compilar" y hagan commit de
+backend/estaticos/ para que los demás reciban la página nueva.
 
 Para usar el BITalino real, la app tiene que correr así (nativa), no en Docker:
 Docker no puede usar el Bluetooth del computador.
@@ -78,10 +83,25 @@ def python_del_entorno():
 
 
 def comando_npm():
-    npm = shutil.which("npm")  # en Windows encuentra npm.cmd
-    if npm is None:
-        raise ErrorPaso("No se encontró npm. Instalen Node.js LTS desde https://nodejs.org (trae npm).")
-    return npm
+    """npm, o None si no está instalado (en Windows encuentra npm.cmd)."""
+    return shutil.which("npm")
+
+
+def hay_pagina_compilada():
+    return (ESTATICOS / "index.html").exists()
+
+
+def node_suficiente():
+    """None si Node.js y npm sirven para compilar; si no, el motivo."""
+    version_node = salida_de([shutil.which("node") or "node", "--version"])
+    if version_node is None:
+        return "no está instalado"
+    numeros = tuple(int(n) for n in version_node.lstrip("v").split(".")[:2])
+    if numeros < VERSION_MINIMA_NODE:
+        return f"Node.js {version_node} es muy antiguo"
+    if comando_npm() is None:
+        return "falta npm"
+    return None
 
 
 # --- 1. Verificar requisitos ---
@@ -114,20 +134,16 @@ def verificar():
             "(en macOS también sirve: pyenv install 3.10.11)."
         )
 
-    version_node = salida_de([shutil.which("node") or "node", "--version"])
-    if version_node is None:
-        problemas.append("Falta Node.js. Instalen la versión LTS desde https://nodejs.org")
+    motivo = node_suficiente()
+    if motivo is None:
+        print("Node.js y npm: bien (se puede compilar la página).")
+    elif hay_pagina_compilada():
+        print(f"Node.js: {motivo}. No importa: se usa la página ya compilada (backend/estaticos/).")
     else:
-        numeros = tuple(int(n) for n in version_node.lstrip("v").split(".")[:2])
-        if numeros < VERSION_MINIMA_NODE:
-            problemas.append(f"Node.js {version_node} es muy antiguo. Instalen la versión LTS desde https://nodejs.org")
-        else:
-            print(f"Node.js {version_node}: bien.")
-
-    if shutil.which("npm") is None:
-        problemas.append("Falta npm (viene con Node.js). Reinstalen Node.js LTS desde https://nodejs.org")
-    else:
-        print("npm: encontrado.")
+        problemas.append(
+            f"Falta la página compilada (backend/estaticos/) y {motivo} para compilarla. "
+            "Bajen de nuevo el repositorio (git pull) o instalen Node.js LTS desde https://nodejs.org"
+        )
 
     if problemas:
         raise ErrorPaso("\n".join("- " + problema for problema in problemas))
@@ -152,8 +168,14 @@ def instalar():
 # --- 3 y 4. Frontend ---
 
 
-def compilar():
+def compilar(obligatorio=True):
     titulo("3. Compilar el frontend")
+    motivo = node_suficiente()
+    if motivo is not None:
+        if obligatorio or not hay_pagina_compilada():
+            raise ErrorPaso(f"Para compilar la página hace falta Node.js LTS ({motivo}): https://nodejs.org")
+        print(f"Se omite ({motivo}): se usa la página ya compilada que viene en el repositorio.")
+        return
     npm = comando_npm()
     ejecutar([npm, "ci"], FRONTEND)
     ejecutar([npm, "run", "build"], FRONTEND)
@@ -170,6 +192,10 @@ def compilar():
 def probar():
     titulo("5. Pruebas")
     ejecutar([python_del_entorno(), "-m", "pytest", "-q"], BACKEND)
+    motivo = node_suficiente()
+    if motivo is not None:
+        print(f"Se omiten tsc y eslint del frontend ({motivo}).")
+        return
     npm = comando_npm()
     ejecutar([npm, "run", "tipos"], FRONTEND)
     ejecutar([npm, "run", "lint"], FRONTEND)
@@ -282,7 +308,8 @@ PASOS = {
     "iniciar": [iniciar],
     "detener": [detener],
     "docker": [docker],
-    "todo": [verificar, instalar, compilar, probar, iniciar],
+    # Con "todo", compilar la página es opcional: sin Node.js se usa la que viene en git.
+    "todo": [verificar, instalar, lambda: compilar(obligatorio=False), probar, iniciar],
 }
 
 

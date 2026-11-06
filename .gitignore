@@ -12,9 +12,6 @@ out/
 next-env.d.ts
 *.tsbuildinfo
 
-# Frontend compilado que sirve FastAPI (se crea con compilar.py)
-backend/estaticos/
-
 # Jupyter y sistema
 .ipynb_checkpoints/
 .DS_Store

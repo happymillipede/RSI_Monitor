@@ -31,8 +31,11 @@ Necesitan:
 
 - **Python 3.10.11**: [python.org](https://www.python.org/downloads/release/python-31011/)
   (en macOS también sirve `pyenv install 3.10.11`).
-- **Node.js LTS** (trae npm): [nodejs.org](https://nodejs.org).
 - **Git**.
+
+**No hace falta Node.js:** la página ya viene compilada en el repositorio
+(`backend/estaticos/`). Node.js solo se necesita para cambiar la página (ver
+[Desarrollo](#desarrollo-backend-y-frontend-por-separado)).
 
 ```bash
 git clone -b web https://github.com/happymillipede/RSI_Monitor.git
@@ -40,8 +43,9 @@ cd RSI_Monitor
 python compilar.py
 ```
 
-`compilar.py` revisa los requisitos, instala todo, compila la página, corre las pruebas,
-levanta la app y abre el navegador. La primera vez demora unos minutos. En Windows, si
+`compilar.py` revisa los requisitos, instala todo, corre las pruebas, levanta la app y
+abre el navegador. Si encuentra Node.js, además vuelve a compilar la página; si no, usa
+la que viene en el repositorio. La primera vez demora unos minutos. En Windows, si
 `python` no es la 3.10, usen `py -3.10 compilar.py`.
 
 En la app:
@@ -104,10 +108,10 @@ Se ejecuta desde la carpeta `RSI_Monitor`. Funciona igual en macOS, Windows y Li
 | Comando | Qué hace |
 |---|---|
 | `python compilar.py` | todo lo de abajo, del 1 al 6 |
-| `python compilar.py verificar` | 1. revisa Python 3.10, Node.js y npm, y dice qué instalar si falta algo |
+| `python compilar.py verificar` | 1. revisa Python 3.10 (y Node.js, si está) y dice qué instalar si falta algo |
 | `python compilar.py instalar` | 2. crea `.venv` e instala `backend/requirements.txt` |
-| `python compilar.py compilar` | 3-4. `npm ci`, `npm run build` y copia la página a `backend/estaticos/` |
-| `python compilar.py probar` | 5. `pytest`, `tsc --noEmit` y `eslint` |
+| `python compilar.py compilar` | 3-4. `npm ci`, `npm run build` y copia la página a `backend/estaticos/` (necesita Node.js) |
+| `python compilar.py probar` | 5. `pytest`, y `tsc --noEmit` y `eslint` si está Node.js |
 | `python compilar.py iniciar` | 6. levanta la app en segundo plano y abre el navegador |
 | `python compilar.py detener` | 7. detiene la app |
 | `python compilar.py docker` | 8. imagen Docker en modo simulación (ver abajo) |
@@ -117,6 +121,13 @@ propone la simulación (`SIMULACION_POR_DEFECTO = True`). La salida de la app qu
 `datos/servidor.log`.
 
 ## Desarrollo: backend y frontend por separado
+
+Para cambiar la página hace falta **Node.js LTS** (trae npm): [nodejs.org](https://nodejs.org).
+
+> **Importante:** la página compilada (`backend/estaticos/`) está guardada en git para que
+> nadie más necesite Node.js. Cuando terminen de cambiar algo en `frontend/`, corran
+> `python compilar.py compilar` y hagan commit también de `backend/estaticos/`. Si no,
+> los demás van a seguir viendo la página anterior.
 
 Para trabajar en la página con recarga automática, usen dos terminales:
 
@@ -253,7 +264,11 @@ conexión con un BITalino falso. El detalle está en la documentación técnica.
 **La página dice "Sin conexión con el backend".** La app no está corriendo:
 `python compilar.py iniciar`. Si sigue, revisen `datos/servidor.log`.
 
-**La página dice que falta compilar el frontend.** `python compilar.py compilar`.
+**La página dice que falta compilar el frontend.** Falta `backend/estaticos/`: bajen de
+nuevo el repositorio (`git pull`), o compílenla con Node.js: `python compilar.py compilar`.
+
+**Cambié la página pero se ve igual.** Compílenla (`python compilar.py compilar`) y
+recarguen el navegador. Para que los demás la vean, hagan commit de `backend/estaticos/`.
 
 **No encuentra el BITalino.** Revisen que esté encendido y emparejado, y elijan el puerto
 a mano en **Conexión**. El mensaje bajo el estado dice qué pasó con cada puerto.
