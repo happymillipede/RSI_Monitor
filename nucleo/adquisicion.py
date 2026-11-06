@@ -7,8 +7,10 @@ Es una réplica de la celda "Adquisición de sEMG" de Código_Bitalino_Python.py
 - la medición dura hasta que se llama detener() (el original mide DURACION = 120 s);
 - el CSV lleva fecha y hora en el nombre (uno por sesión).
 
-SesionMedicion avisa lo que pasa a un "oyente" (ver la clase Oyente). La app usa un
-oyente que manda señales Qt a la ventana; el modo --headless usa uno que imprime.
+- SesionMedicion: el ciclo en Python puro. Avisa lo que pasa a un "oyente" (ver la
+  clase Oyente). El modo --headless usa un oyente que imprime.
+- HiloAdquisicion: corre SesionMedicion en un QThread, para que la ventana nunca se
+  congele, y convierte los avisos en señales Qt.
 
 Qué se puede editar aquí: ENCABEZADO_CSV y MUESTRAS_RECIENTES.
 """
@@ -17,9 +19,12 @@ import csv
 import queue
 import statistics
 import threading
+import traceback
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+
+from PySide6.QtCore import QThread, Signal
 
 from nucleo.regla_fatiga import ReglaFatiga
 from nucleo.simulador import COLUMNA_EMG
@@ -152,15 +157,16 @@ class SesionMedicion:
         dispositivo = None
         adquisicion_iniciada = False
         try:
+            # Primero se conecta, para no dejar un CSV vacío si no hay dispositivo.
+            self.cambiar_estado(CONECTANDO)
+            dispositivo = self.abrir_dispositivo()
+            if dispositivo is None:  # se pidió detener mientras se conectaba
+                return
+
             with open(self.ruta_csv, "w", newline="", encoding="utf-8") as archivo_features:
                 escritor_features = csv.writer(archivo_features)
                 escritor_features.writerow(ENCABEZADO_CSV)
                 archivo_features.flush()
-
-                self.cambiar_estado(CONECTANDO)
-                dispositivo = self.abrir_dispositivo()
-                if dispositivo is None:  # se pidió detener mientras se conectaba
-                    return
 
                 # Línea 391
                 dispositivo.start(self.original.fs, [self.constantes["CANAL"]])
@@ -243,3 +249,50 @@ class SesionMedicion:
             ultima_trama=self.ultima_trama,
             muestras_recientes=list(self.muestras_recientes),
         )
+
+
+class HiloAdquisicion(QThread):
+    """
+    Corre una SesionMedicion en un hilo aparte. La ventana se conecta a estas señales;
+    Qt las entrega en el hilo de la ventana, así que ahí se puede tocar la interfaz.
+    """
+
+    estado_cambiado = Signal(str, str)  # estado, detalle
+    bloque_procesado = Signal(object)  # InfoBloque
+    intervalo_cerrado = Signal(object, object)  # ResumenIntervalo, línea base (o None)
+    fatiga_detectada = Signal(object)  # ResumenIntervalo
+
+    def __init__(self, sesion):
+        super().__init__()
+        self.sesion = sesion
+        sesion.oyente = self
+
+    def run(self):
+        try:
+            self.sesion.ejecutar()
+        except Exception:
+            # La sesión ya avisó el estado Error con el detalle; aquí solo se deja el rastro.
+            traceback.print_exc()
+
+    # Órdenes desde la ventana
+    def detener(self):
+        self.sesion.detener()
+
+    def pausar_alertas(self, pausar):
+        self.sesion.pausar_alertas(pausar)
+
+    def rearmar_alerta(self):
+        self.sesion.rearmar_alerta()
+
+    # Avisos de la sesión (corren en el hilo de medición) -> señales
+    def al_cambiar_estado(self, estado, detalle=""):
+        self.estado_cambiado.emit(estado, detalle)
+
+    def al_procesar_bloque(self, info):
+        self.bloque_procesado.emit(info)
+
+    def al_cerrar_intervalo(self, resumen, linea_base):
+        self.intervalo_cerrado.emit(resumen, linea_base)
+
+    def al_detectar_fatiga(self, resumen):
+        self.fatiga_detectada.emit(resumen)

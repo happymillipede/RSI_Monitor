@@ -4,6 +4,7 @@ Punto de entrada de RSI Monitor.
 Uso:
     python app.py                         abre la ventana
     python app.py --sim                   abre la ventana en modo simulación
+    python app.py --sim --umbrales-sim    ídem, con los umbrales SIM_* del original
     python app.py --sim --headless --velocidad 10 --escenario fatigue_test --umbrales-sim --duracion 60
                                           mide sin ventana e imprime los estados y las alertas
 
@@ -118,18 +119,31 @@ def ejecutar_sin_ventana(argumentos, original, configuracion, carpeta_base):
     return 0
 
 
-def main(argumentos=None):
+def principal(argumentos=None):
     argumentos = leer_argumentos(argumentos)
-    original = cargar_original()
-    carpeta_base = rutas.carpeta_base()
-    configuracion = Configuracion(carpeta_base)
+
+    try:
+        original = cargar_original()
+        carpeta_base = rutas.carpeta_base()
+        configuracion = Configuracion(carpeta_base)
+    except Exception as error:
+        mensaje = f"No se pudo abrir RSI Monitor:\n{error}"
+        if argumentos.headless:
+            print(mensaje)
+        else:
+            from ui.aplicacion import mostrar_error_fatal
+
+            mostrar_error_fatal(mensaje)
+        return 1
 
     if argumentos.headless:
         return ejecutar_sin_ventana(argumentos, original, configuracion, carpeta_base)
 
-    print("La ventana se agrega en la Fase 2. Por ahora use --sim --headless.")
-    return 2
+    # La interfaz se importa solo aquí, para que el modo --headless no cargue las ventanas.
+    from ui.aplicacion import ejecutar_ventana
+
+    return ejecutar_ventana(argumentos, original, configuracion, carpeta_base)
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(principal())

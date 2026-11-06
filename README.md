@@ -5,8 +5,9 @@ Usa un BITalino con 3 electrodos (sEMG por Bluetooth) y el código del grupo,
 `Código_Bitalino_Python.py`, que **no se modifica**: la app lo lee con `ast` y toma de
 ahí la clase `ProcesadorEMG` y las constantes (umbrales, tiempos, `SIM_*`).
 
-> Estado: **Fase 1** (núcleo sin interfaz). La ventana, la bandeja, los descansos y
-> el empaquetado llegan en las fases siguientes; este README se completa en la Fase 7.
+> Estado: **Fase 2** (ventana con gráficos, panel y Encender/Apagar en modo simulación).
+> La alerta, la bandeja, los descansos, los ajustes, la conexión al BITalino real y el
+> empaquetado llegan en las fases siguientes; este README se completa en la Fase 7.
 
 ## Preparar el entorno (Python 3.10.11)
 
@@ -33,7 +34,19 @@ py -3.10 -m venv .venv
 pip install -r requirements.txt
 ```
 
-## Probar sin hardware
+## Abrir la ventana
+
+```bash
+python app.py --sim
+```
+
+Elijan el escenario y la velocidad (×1 o ×10) y aprieten **Encender**. Primero se
+calibra la línea base y después se ven las tendencias de RMS y MDF y el panel de
+información (los mismos datos del original). Con `--umbrales-sim` se usan los umbrales
+`SIM_*` del original, que en `fatigue_test` disparan la alerta (la ventana de alerta
+llega en la Fase 3).
+
+## Probar sin hardware y sin ventana
 
 ```bash
 python app.py --sim --headless --velocidad 10 --escenario fatigue_test --umbrales-sim --duracion 60

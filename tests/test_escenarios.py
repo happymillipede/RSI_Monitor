@@ -99,3 +99,17 @@ def test_stop_se_llama_aunque_falle_la_lectura(original, tmp_path):
 
     assert dispositivo.detenido and dispositivo.cerrado
     assert sesion.estado == ERROR
+
+
+def test_no_deja_csv_vacio_si_no_hay_dispositivo(original, tmp_path):
+    def abrir_que_falla():
+        raise RuntimeError("no hay BITalino")
+
+    sesion = SesionMedicion(
+        original, parametros_del_original(original.constantes), abrir_que_falla, tmp_path, "prueba"
+    )
+    with pytest.raises(RuntimeError):
+        sesion.ejecutar()
+
+    assert sesion.estado == ERROR
+    assert list(tmp_path.iterdir()) == []
