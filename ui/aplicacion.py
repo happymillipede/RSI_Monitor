@@ -1,38 +1,48 @@
 """
 Coordinador de la app con ventana: conecta el hilo de medición con la ventana
-principal, la ventana de alerta y el ícono de la bandeja.
+principal, la alerta, los descansos, el reloj de uso y el ícono de la bandeja.
 
 Aquí se decide qué hacer cuando el usuario aprieta algo y qué mostrar cuando el hilo
-avisa algo. No hay procesamiento de señal: eso está en nucleo/.
+avisa algo. No hay procesamiento de señal (está en nucleo/) ni reglas de descansos o
+del reloj de uso (están en uso/).
 
 Qué se puede editar aquí: TIEMPO_MAXIMO_CIERRE_MS y los textos de los avisos.
 """
 
 import sys
 
-from PySide6.QtCore import QObject
+from PySide6.QtCore import QObject, QTimer
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from nucleo import rutas
 from nucleo.adquisicion import CALIBRANDO, DESCONECTADO, ERROR, HiloAdquisicion, SesionMedicion, prefijo_csv
 from nucleo.simulador import DispositivoSimulado
-from ui.bandeja import ICONO_ALERTA, ICONO_APAGADO, ICONO_MIDIENDO, Bandeja, crear_icono
+from ui.bandeja import ICONO_ALERTA, ICONO_APAGADO, ICONO_DESCANSO, ICONO_MIDIENDO, Bandeja, crear_icono
+from ui.cuenta_regresiva import VentanaCuentaRegresiva
 from ui.dialogo_alerta import DialogoAlerta, texto_alerta
+from ui.pestana_descansos import DialogoTomarDescanso, PestanaDescansos
 from ui.ventana_principal import (
+    EN_DESCANSO,
     RIESGO_FATIGA,
     TITULO_VENTANA,
     VentanaPrincipal,
     texto_calibracion,
+    texto_descanso,
     texto_linea_base,
     texto_panel,
+    texto_uso,
 )
+from uso.descansos import GestorDescansos, PlantillasDescanso
+from uso.reloj_uso import RelojUso
 
 # Al salir se espera a que el hilo cierre el dispositivo como máximo este tiempo.
 TIEMPO_MAXIMO_CIERRE_MS = 5000
+UN_SEGUNDO_MS = 1000
 
 AVISO_SIGUE_EN_BANDEJA = (
     "RSI Monitor sigue funcionando en la bandeja. Para cerrarlo use Salir en el menú del ícono."
 )
+AVISO_FIN_DESCANSO = "Terminó el descanso. La detección de fatiga vuelve a estar activa."
 
 
 class AplicacionRSI(QObject):
@@ -47,35 +57,58 @@ class AplicacionRSI(QObject):
         self.hilo = None
         self.parametros = None
         self.estado = DESCONECTADO  # último estado que avisó el hilo de medición
-        self.alerta_pendiente = False
+        self.texto_detalle = ""  # lo que se vuelve a mostrar al terminar un descanso
+        self.linea_base_mostrada = False
         self.aviso_bandeja_mostrado = False
 
+        self.reloj_uso = RelojUso(self.carpeta_datos, configuracion["reloj_uso"]["guardar_cada_s"])
+        self.descansos = GestorDescansos(self.carpeta_datos)
+        self.plantillas = PlantillasDescanso(configuracion)
+
+        self.crear_ventanas()
+        self.crear_bandeja()
+
+        self.temporizador = QTimer(self)
+        self.temporizador.timeout.connect(self.cada_segundo)
+        self.temporizador.start(UN_SEGUNDO_MS)
+
+        self.mostrar_historial()
+        self.actualizar_estado()
+
+    def crear_ventanas(self):
         self.ventana = VentanaPrincipal(self.constantes["TREND_WINDOW_S"])
-        simulacion = configuracion["simulacion"]
+        simulacion = self.configuracion["simulacion"]
         self.ventana.poner_modo(
             simulacion["activa"],
-            configuracion.escenario_simulacion(self.constantes),
+            self.configuracion.escenario_simulacion(self.constantes),
             simulacion["velocidad"],
         )
         self.ventana.encender_apagar_pedido.connect(self.alternar_medicion)
         self.ventana.modo_cambiado.connect(self.guardar_modo)
         self.ventana.cerrada_por_usuario.connect(self.al_cerrar_ventana)
 
+        self.pestana_descansos = PestanaDescansos(self.plantillas)
+        self.pestana_descansos.tomar_descanso_pedido.connect(self.tomar_descanso)
+        self.ventana.agregar_pestana(self.pestana_descansos, "Descansos")
+
         self.dialogo_alerta = DialogoAlerta()
         self.dialogo_alerta.accepted.connect(self.aceptar_alerta)
 
+        self.cuenta_regresiva = VentanaCuentaRegresiva()
+        self.cuenta_regresiva.terminar_antes_pedido.connect(lambda: self.terminar_descanso(completado=False))
+
+    def crear_bandeja(self):
         # Si el sistema no tiene bandeja (pasa en algunos escritorios Linux), la app
         # funciona igual, pero cerrar la ventana cierra la app.
         self.bandeja = None
-        if Bandeja.disponible():
-            self.bandeja = Bandeja()
-            self.bandeja.mostrar_pedido.connect(self.mostrar_ventana)
-            self.bandeja.encender_apagar_pedido.connect(self.alternar_medicion)
-            self.bandeja.descanso_pedido.connect(self.tomar_descanso)
-            self.bandeja.salir_pedido.connect(self.salir)
-            self.bandeja.show()
-
-        self.actualizar_estado()
+        if not Bandeja.disponible():
+            return
+        self.bandeja = Bandeja()
+        self.bandeja.mostrar_pedido.connect(self.mostrar_ventana)
+        self.bandeja.encender_apagar_pedido.connect(self.alternar_medicion)
+        self.bandeja.descanso_pedido.connect(self.tomar_descanso)
+        self.bandeja.salir_pedido.connect(self.salir)
+        self.bandeja.show()
 
     # --- Encender / Apagar ---
 
@@ -105,8 +138,13 @@ class AplicacionRSI(QObject):
         self.hilo.fatiga_detectada.connect(self.al_detectar_fatiga)
         self.hilo.finished.connect(self.al_terminar_hilo)
 
+        # Si se enciende durante un descanso, la medición parte con la alerta en pausa.
+        self.descansos.conectar_medicion(self.hilo)
+        self.reloj_uso.empezar_medicion()
+        self.linea_base_mostrada = False
+
         self.ventana.medicion_iniciada(self.parametros["TREND_INTERVAL_S"])
-        self.ventana.mostrar_detalle(f"Guardando en {sesion.ruta_csv.name}")
+        self.mostrar_detalle(f"Guardando en {sesion.ruta_csv.name}")
         self.poner_boton_bandeja("Apagar", activo=True)
         self.hilo.start()
 
@@ -122,6 +160,8 @@ class AplicacionRSI(QObject):
         # se espera ese instante (milisegundos) antes de soltarlo.
         self.hilo.wait()
         self.hilo = None
+        self.descansos.conectar_medicion(None)
+        self.reloj_uso.terminar_medicion()
         self.ventana.medicion_detenida()
         self.poner_boton_bandeja("Encender", activo=True)
         self.actualizar_estado()
@@ -161,43 +201,124 @@ class AplicacionRSI(QObject):
         self.estado = estado
         self.actualizar_estado()
         if estado == CALIBRANDO:
-            self.ventana.mostrar_detalle(texto_calibracion(self.parametros["BASELINE_DURATION_S"]))
+            self.mostrar_detalle(texto_calibracion(self.parametros["BASELINE_DURATION_S"]))
         elif estado == ERROR:
-            self.ventana.mostrar_detalle(detalle)
+            self.mostrar_detalle(detalle)
 
     def al_procesar_bloque(self, info):
         self.ventana.mostrar_panel(texto_panel(info, self.constantes, self.parametros, self.estado))
 
     def al_cerrar_intervalo(self, resumen, linea_base):
         self.ventana.agregar_intervalo(resumen)
-        if linea_base is not None:
-            self.ventana.mostrar_detalle(texto_linea_base(*linea_base))
+        if linea_base is not None and not self.linea_base_mostrada:
+            self.linea_base_mostrada = True
+            self.mostrar_detalle(texto_linea_base(*linea_base))
 
     # --- Alerta de fatiga ---
 
     def al_detectar_fatiga(self, resumen):
-        if self.alerta_pendiente:  # ya hay una alerta esperando Aceptar: no se repite
+        # No se repite si ya hay una alerta esperando Aceptar o un descanso en curso.
+        if not self.descansos.recibir_alerta():
             return
-        self.alerta_pendiente = True
-        minutos = self.configuracion["descansos"]["duracion_fatiga_min"]
+        minutos = self.minutos_descanso_fatiga()
         self.dialogo_alerta.mostrar(minutos)
         self.notificar(texto_alerta(minutos), alerta=True)
         self.actualizar_estado()
 
     def aceptar_alerta(self):
-        self.alerta_pendiente = False
+        descanso = self.descansos.aceptar_alerta(self.minutos_descanso_fatiga())
+        self.empezar_descanso(descanso)
+
+    def minutos_descanso_fatiga(self):
+        return self.configuracion["descansos"]["duracion_fatiga_min"]
+
+    # --- Descansos ---
+
+    def tomar_descanso(self):
+        """Botón "Tomar descanso" (pestaña Descansos o bandeja)."""
+        if self.descansos.alerta_pendiente:
+            # Con una alerta pendiente, el descanso empieza con su botón Aceptar.
+            self.dialogo_alerta.traer_al_frente()
+            return
+        if self.descansos.en_descanso():
+            self.mostrar_cuenta_regresiva()
+            return
+
+        padre = self.ventana if self.ventana.isVisible() else None
+        dialogo = DialogoTomarDescanso(self.plantillas.lista(), padre)
+        if not dialogo.exec():
+            return
+        nombre, minutos = dialogo.valores()
+        descanso = self.descansos.iniciar_manual(minutos, nombre)
+        if descanso is not None:  # None si llegó una alerta mientras se elegía
+            self.empezar_descanso(descanso)
+
+    def empezar_descanso(self, descanso):
+        self.reloj_uso.empezar_descanso()
+        self.mostrar_cuenta_regresiva()
+        self.ventana.mostrar_detalle(texto_descanso(descanso.nombre, descanso.duracion_planeada_s))
         self.actualizar_estado()
+
+    def mostrar_cuenta_regresiva(self):
+        descanso = self.descansos.actual
+        self.cuenta_regresiva.mostrar(descanso.nombre, descanso.duracion_planeada_s)
+        self.cuenta_regresiva.actualizar(self.descansos.segundos_restantes(), descanso.duracion_planeada_s)
+
+    def terminar_descanso(self, completado):
+        """Al llegar a cero (completado) o con "Terminar antes". Rearma la alerta."""
+        if self.descansos.terminar(completado) is None:
+            return
+        self.reloj_uso.terminar_descanso()
+        self.cuenta_regresiva.hide()
+        self.ventana.mostrar_detalle(self.texto_detalle)
+        self.mostrar_historial()
+        self.actualizar_estado()
+        if completado:
+            self.notificar(AVISO_FIN_DESCANSO)
+
+    def mostrar_historial(self):
+        self.pestana_descansos.mostrar_historial(
+            self.descansos.historial,
+            self.descansos.minutos_del_dia(),
+            len(self.descansos.descansos_del_dia()),
+        )
+
+    # --- Cada segundo: reloj de uso y cuenta regresiva ---
+
+    def cada_segundo(self):
+        self.reloj_uso.tick()
+        self.ventana.mostrar_uso(texto_uso(self.reloj_uso.segundos_hoy(), self.reloj_uso.segundos_sesion))
+
+        descanso = self.descansos.actual
+        if descanso is None:
+            return
+        if self.descansos.termino_el_tiempo():
+            self.terminar_descanso(completado=True)
+            return
+        restantes = self.descansos.segundos_restantes()
+        self.cuenta_regresiva.actualizar(restantes, descanso.duracion_planeada_s)
+        self.ventana.mostrar_detalle(texto_descanso(descanso.nombre, restantes))
 
     # --- Estado que se muestra en la ventana y en la bandeja ---
 
+    def mostrar_detalle(self, texto):
+        """Texto bajo el estado. Durante un descanso ahí va la cuenta regresiva."""
+        self.texto_detalle = texto
+        if not self.descansos.en_descanso():
+            self.ventana.mostrar_detalle(texto)
+
     def estado_visible(self):
-        if self.alerta_pendiente:
+        if self.descansos.alerta_pendiente:
             return RIESGO_FATIGA
+        if self.descansos.en_descanso():
+            return EN_DESCANSO
         return self.estado
 
     def tipo_icono(self):
-        if self.alerta_pendiente:
+        if self.descansos.alerta_pendiente:
             return ICONO_ALERTA
+        if self.descansos.en_descanso():
+            return ICONO_DESCANSO
         if self.hilo is not None:
             return ICONO_MIDIENDO
         return ICONO_APAGADO
@@ -222,16 +343,8 @@ class AplicacionRSI(QObject):
         self.ventana.showNormal()
         self.ventana.raise_()
         self.ventana.activateWindow()
-        if self.alerta_pendiente:
+        if self.descansos.alerta_pendiente:
             self.dialogo_alerta.traer_al_frente()
-
-    def tomar_descanso(self):
-        # Mientras hay una alerta pendiente, el descanso empieza con su botón Aceptar.
-        if self.alerta_pendiente:
-            self.dialogo_alerta.traer_al_frente()
-            return
-        self.mostrar_ventana()
-        self.ventana.mostrar_detalle("Los descansos manuales se agregan en la Fase 4.")
 
     def al_cerrar_ventana(self):
         """El usuario cerró la ventana con la X."""
@@ -247,10 +360,14 @@ class AplicacionRSI(QObject):
         QApplication.quit()
 
     def cerrar(self):
-        """Detiene la medición antes de salir (cierra el último intervalo y el dispositivo)."""
+        """Antes de salir: guarda el descanso en curso, detiene la medición y guarda el reloj."""
+        self.temporizador.stop()
+        if self.descansos.en_descanso():
+            self.descansos.terminar(completado=False)
         if self.hilo is not None:
             self.hilo.detener()
             self.hilo.wait(TIEMPO_MAXIMO_CIERRE_MS)
+        self.reloj_uso.terminar_medicion()
         if self.bandeja is not None:
             self.bandeja.hide()
 

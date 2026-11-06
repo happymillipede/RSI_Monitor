@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
 )
 
 from nucleo.adquisicion import BUSCANDO, CALIBRANDO, CONECTANDO, DESCONECTADO, ERROR, MIDIENDO
+from uso.reloj_uso import formato_reloj
 
 TITULO_VENTANA = "RSI Monitor"
 TAMANO_VENTANA = (1200, 720)
@@ -120,6 +121,14 @@ def texto_linea_base(rms, mdf):
     return f"Línea base: RMS = {rms:.3f} ADC · MDF = {mdf:.3f} Hz"
 
 
+def texto_uso(segundos_hoy, segundos_sesion):
+    return f"Uso hoy: {formato_reloj(segundos_hoy)} · Sesión actual: {formato_reloj(segundos_sesion)}"
+
+
+def texto_descanso(nombre, segundos_restantes):
+    return f"{nombre}: quedan {formato_reloj(math.ceil(segundos_restantes))}. Durante el descanso no se evalúa la fatiga."
+
+
 class GraficoTendencia(pg.PlotWidget):
     """Un gráfico de tendencia que muestra solo los últimos 'ventana_s' segundos."""
 
@@ -202,10 +211,12 @@ class VentanaPrincipal(QMainWindow):
 
         self.etiqueta_detalle = QLabel()
         self.etiqueta_detalle.setWordWrap(True)
+        self.etiqueta_uso = QLabel(texto_uso(0, 0))
 
         columna_estado = QVBoxLayout()
         columna_estado.addWidget(self.etiqueta_estado)
         columna_estado.addWidget(self.etiqueta_detalle)
+        columna_estado.addWidget(self.etiqueta_uso)
 
         self.combo_modo = QComboBox()
         self.combo_modo.addItems([MODO_BITALINO, MODO_SIMULACION])
@@ -282,6 +293,12 @@ class VentanaPrincipal(QMainWindow):
 
     def mostrar_detalle(self, texto):
         self.etiqueta_detalle.setText(texto)
+
+    def mostrar_uso(self, texto):
+        self.etiqueta_uso.setText(texto)
+
+    def agregar_pestana(self, widget, titulo):
+        self.pestanas.addTab(widget, titulo)
 
     def mostrar_panel(self, texto):
         self.panel.setPlainText(texto)

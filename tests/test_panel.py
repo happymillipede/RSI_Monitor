@@ -4,7 +4,7 @@ import numpy as np
 
 from nucleo.adquisicion import InfoBloque
 from tests.utilidades import parametros_del_original
-from ui.ventana_principal import texto_calibracion, texto_linea_base, texto_panel
+from ui.ventana_principal import texto_calibracion, texto_descanso, texto_linea_base, texto_panel, texto_uso
 
 
 def test_panel_tiene_los_mismos_datos_que_el_original(original):
@@ -53,3 +53,8 @@ def test_textos_de_calibracion_y_linea_base():
         "Calibrando línea base (5 s): mantén tu postura y ritmo de trabajo normales."
     )
     assert texto_linea_base(16.0721, 190.8139) == "Línea base: RMS = 16.072 ADC · MDF = 190.814 Hz"
+
+
+def test_textos_de_uso_y_descanso():
+    assert texto_uso(3725, 75) == "Uso hoy: 1:02:05 · Sesión actual: 01:15"
+    assert texto_descanso("Café", 599.2).startswith("Café: quedan 10:00.")
