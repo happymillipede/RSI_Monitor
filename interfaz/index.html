@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<!--
+  Ventana principal de RSI Monitor.
+  - Pestaña "Principal": el diseño del boceto (Conectar dispositivo, estado, Comenzar,
+    Tendencia RMS, Tendencia porcentual de fatiga, Tiempo, Porcentaje de alerta,
+    Calibrar y el muñeco).
+  - Pestaña "Detalles": los gráficos y el panel del notebook 4.2.
+  Python hace todos los cálculos; app.js solo muestra los datos y llama a la API.
+  Qué se puede editar aquí: los textos y el orden de los paneles.
+-->
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>RSI Monitor</title>
+    <link rel="stylesheet" href="estilos.css">
+    <script src="graficos.js" defer></script>
+    <script src="app.js" defer></script>
+</head>
+<body>
+<header class="cabecera">
+    <div class="marca">
+        <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="15" fill="var(--verde)"/><path d="M4 17h6l3-7 4 13 3-9 2 3h6" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <div><strong>RSI Monitor</strong><span>Detector de fatiga muscular · Grupo 2</span></div>
+    </div>
+    <nav class="pestanas" aria-label="Secciones">
+        <button type="button" class="pestana activa" data-pestana="principal">Principal</button>
+        <button type="button" class="pestana" data-pestana="detalles">Detalles</button>
+    </nav>
+</header>
+
+<section class="barra" aria-label="Controles">
+    <button type="button" id="btn-conectar" class="secundario">Conectar dispositivo</button>
+    <span id="estado-conexion" class="chip" role="status" aria-live="polite">
+        <span class="punto"></span><span id="estado-conexion-texto">Desconectado</span>
+    </span>
+    <span id="simulacion" class="etiqueta-sim" hidden>SIMULACIÓN</span>
+    <span class="espacio"></span>
+    <button type="button" id="btn-comenzar" class="primario" disabled>Comenzar</button>
+</section>
+
+<p id="aviso" class="aviso" role="alert" hidden></p>
+<p id="banner-alerta" class="banner-alerta" hidden>
+    <strong>⚠ Riesgo de fatiga muscular:</strong> se sugiere tomar un descanso.
+    <button type="button" id="btn-cerrar-alerta" class="secundario">Cerrar alerta</button>
+</p>
+
+<!-- Pestaña Principal (boceto) -->
+<main id="principal" class="contenido-pestana">
+    <div class="graficos">
+        <article class="tarjeta grafico">
+            <div class="titulo-grafico">
+                <h2>Tendencia RMS</h2>
+                <span id="subtitulo-rms">Promedio cada 5 s</span>
+                <label class="ventana-grafico">Ver
+                    <select id="ventana-tendencias"></select>
+                </label>
+            </div>
+            <canvas id="g-rms" role="img" aria-label="Tendencia del RMS en unidades ADC"></canvas>
+        </article>
+        <article class="tarjeta grafico">
+            <div class="titulo-grafico">
+                <h2>Tendencia porcentual de fatiga</h2>
+                <span>0–100 % respecto de la línea base · la línea roja es el porcentaje de alerta</span>
+            </div>
+            <canvas id="g-fatiga" role="img" aria-label="Índice de fatiga de cero a cien por ciento"></canvas>
+        </article>
+    </div>
+
+    <aside class="lateral">
+        <article class="tarjeta resumen">
+            <div class="fila"><span>Tiempo:</span><strong id="tiempo" class="numero">00:00:00</strong></div>
+            <div class="fila"><span>Fatiga actual:</span><strong id="fatiga-actual" class="numero">—</strong></div>
+            <label class="fila" for="umbral"><span>Porcentaje de alerta:</span>
+                <span class="entrada"><input id="umbral" type="number" min="0" max="100" step="1" inputmode="numeric"> %</span>
+            </label>
+            <button type="button" id="btn-calibrar" class="secundario ancho" disabled>Calibrar</button>
+            <progress id="calibracion-progreso" max="1" value="0" hidden></progress>
+            <p id="calibracion-texto" class="nota">Conecta el dispositivo y aprieta Calibrar.</p>
+        </article>
+
+        <figure class="muneco" aria-live="polite">
+            <svg id="muneco" viewBox="0 0 160 210" data-animo="apagado" role="img" aria-labelledby="muneco-texto">
+                <ellipse class="cuerpo" cx="80" cy="160" rx="42" ry="44"/>
+                <path class="pelo" d="M42 58c-2-24 16-40 38-40s40 14 38 40c-8-12-20-18-38-16-16-2-30 4-38 16z"/>
+                <circle class="cara" cx="80" cy="64" r="36"/>
+                <path class="pelo" d="M46 50c6-16 20-24 34-24 16 0 28 8 34 22-12-6-24-8-34-6-12-2-24 2-34 8z"/>
+                <g class="ojos ojos-abiertos"><circle cx="66" cy="64" r="4"/><circle cx="94" cy="64" r="4"/></g>
+                <g class="ojos ojos-cansados"><path d="M60 66q6-5 12 0M88 66q6-5 12 0"/></g>
+                <path class="boca boca-feliz" d="M68 80q12 10 24 0"/>
+                <path class="boca boca-neutra" d="M70 84h20"/>
+                <path class="boca boca-triste" d="M68 88q12-9 24 0"/>
+                <g class="gotas">
+                    <path d="M26 150c-8 10-10 16-10 20a10 10 0 0 0 20 0c0-4-2-10-10-20z"/>
+                    <path d="M134 150c-8 10-10 16-10 20a10 10 0 0 0 20 0c0-4-2-10-10-20z"/>
+                    <path class="gota-cara" d="M120 40c-4 6-5 9-5 11a5 5 0 0 0 10 0c0-2-1-5-5-11z"/>
+                </g>
+            </svg>
+            <figcaption id="muneco-texto">Conecta el dispositivo para empezar.</figcaption>
+        </figure>
+    </aside>
+</main>
+
+<!-- Pestaña Detalles (gráficos y panel del notebook 4.2) -->
+<main id="detalles" class="contenido-pestana detalles" hidden>
+    <article class="tarjeta grafico ancho-completo">
+        <div class="titulo-grafico"><h2>Señal sEMG cruda</h2><span id="subtitulo-crudo">Últimos 5 s</span></div>
+        <canvas id="g-crudo" role="img" aria-label="Señal sEMG cruda en ADC"></canvas>
+    </article>
+    <article class="tarjeta grafico">
+        <div class="titulo-grafico"><h2>RMS por bloque</h2><span>N = 1000 muestras · últimos 30 s</span></div>
+        <canvas id="g-rms-bloque" role="img" aria-label="RMS de cada bloque"></canvas>
+    </article>
+    <article class="tarjeta grafico">
+        <div class="titulo-grafico"><h2>MDF por bloque</h2><span>N = 1000 muestras · últimos 30 s</span></div>
+        <canvas id="g-mdf-bloque" role="img" aria-label="Frecuencia mediana de cada bloque"></canvas>
+    </article>
+    <article class="tarjeta grafico">
+        <div class="titulo-grafico"><h2>Tendencia de MDF</h2><span id="subtitulo-mdf">Mediana Active cada 5 s</span></div>
+        <canvas id="g-mdf" role="img" aria-label="Tendencia de la frecuencia mediana"></canvas>
+    </article>
+    <article class="tarjeta">
+        <h2>Panel de adquisición</h2>
+        <pre id="panel" class="panel-texto">Esperando datos del BITalino...</pre>
+    </article>
+    <article class="tarjeta">
+        <h2>Calibración de reposo</h2>
+        <pre id="calibracion-lineas" class="panel-texto">Todavía no se calibra.</pre>
+    </article>
+    <article class="tarjeta">
+        <h2>Calibración de MVC (opcional)</h2>
+        <p class="nota">Tres contracciones máximas de 5 s, con 30 s de descanso entre ellas. Agrega la columna
+            «RMS (%MVC)» a los CSV de la grabación siguiente.</p>
+        <p>MVC_RMS: <strong id="mvc-valor">sin calibrar</strong></p>
+        <div class="botones">
+            <button type="button" id="btn-mvc" class="secundario" disabled>Calibrar MVC</button>
+            <button type="button" id="btn-borrar-mvc" class="secundario" disabled>Quitar MVC</button>
+        </div>
+    </article>
+    <article class="tarjeta">
+        <h2>Archivos de la grabación</h2>
+        <ul id="archivos" class="archivos"><li>Todavía no hay grabaciones en esta sesión.</li></ul>
+        <p class="nota">Carpeta: <code id="carpeta-datos"></code></p>
+        <button type="button" id="btn-carpeta" class="secundario">Abrir carpeta de datos</button>
+    </article>
+    <article class="tarjeta ancho-completo">
+        <h2>Mensajes</h2>
+        <pre id="mensajes" class="panel-texto mensajes"></pre>
+    </article>
+</main>
+
+<!-- Ventana para conectar el dispositivo -->
+<dialog id="dialogo-conexion" aria-labelledby="titulo-conexion">
+    <form method="dialog" class="formulario">
+        <h2 id="titulo-conexion">Conectar dispositivo</h2>
+        <fieldset class="opciones-fuente">
+            <label><input type="radio" name="fuente" value="bitalino" checked> BITalino</label>
+            <label><input type="radio" name="fuente" value="simulacion"> Simulación (sin BITalino)</label>
+        </fieldset>
+
+        <div id="opciones-bitalino">
+            <label for="puerto">Puerto</label>
+            <div class="fila-controles">
+                <select id="puerto"></select>
+                <button type="button" id="btn-actualizar-puertos" class="secundario">Actualizar</button>
+            </div>
+            <p class="nota">Primero empareja el BITalino por Bluetooth en la configuración del computador.
+                En macOS el puerto se llama /dev/tty.BITalino-…; en Windows es un COM de Bluetooth (el «Saliente»).</p>
+        </div>
+
+        <div id="opciones-simulacion" hidden>
+            <label for="modo-sim">Modo</label>
+            <select id="modo-sim">
+                <option value="normal">normal</option>
+                <option value="fatiga">fatiga</option>
+                <option value="contraccion">contracción</option>
+            </select>
+            <label for="velocidad-sim">Velocidad</label>
+            <select id="velocidad-sim"></select>
+            <p class="nota">Los primeros 15 s simulan reposo (para Calibrar); después sigue el modo elegido.</p>
+        </div>
+
+        <p id="conexion-detalle" class="nota"></p>
+        <div class="botones">
+            <button type="button" id="btn-detectar" class="secundario">Detectar automáticamente</button>
+            <button type="button" id="btn-conectar-ahora" class="primario">Conectar</button>
+        </div>
+        <div class="botones abajo">
+            <button type="button" id="btn-desconectar" class="secundario">Desconectar</button>
+            <button value="cerrar" class="secundario">Cerrar</button>
+        </div>
+    </form>
+</dialog>
+<noscript>Esta ventana necesita JavaScript.</noscript>
+</body>
+</html>

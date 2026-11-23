@@ -1,0 +1,16 @@
+# Dependencias de RSI Monitor (Python 3.10.11, como el notebook del grupo).
+# Instalar con:  python -m pip install -r requirements.txt
+# (o simplemente: python iniciar.py)
+
+# Ventana de la app (HTML + JavaScript + CSS). En Windows usa Edge WebView2 y en
+# macOS el WebKit del sistema. En Linux necesita además Qt: pip install "pywebview[qt]"
+pywebview==6.2.1
+
+# Ya usadas por el notebook
+bitalino==1.2.6
+numpy==2.2.6
+scipy==1.15.3
+pyserial==3.5
+
+# Pruebas
+pytest==9.2.0

@@ -2,21 +2,19 @@
 __pycache__/
 *.py[cod]
 .venv/
+.venv_exe/
 venv/
 .pytest_cache/
 
-# Node y Next.js
-node_modules/
-.next/
-out/
-next-env.d.ts
-*.tsbuildinfo
+# Ejecutable (python generar_exe.py)
+build/
+dist/
+*.spec
 
 # Jupyter y sistema
 .ipynb_checkpoints/
 .DS_Store
 
-# Datos del usuario (se crean al usar la app)
+# Datos del usuario (CSV y ajustes; se crean al usar la app)
 datos/
 config.json
-*.dañado

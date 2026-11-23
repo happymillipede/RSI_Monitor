@@ -1,0 +1,138 @@
+/*
+  Estilos de la ventana principal de RSI Monitor.
+  Qué se puede editar aquí: los colores y tamaños de :root.
+*/
+
+:root {
+    color-scheme: light;
+    --fondo: #f4f6fa;
+    --tarjeta: #ffffff;
+    --texto: #1c2c40;
+    --texto-suave: #64748b;
+    --borde: #e3e8f0;
+    --grilla: #e8edf3;
+    --azul: #235ba8;
+    --verde: #239b56;
+    --naranjo: #d68910;
+    --rojo: #c0392b;
+    --morado: #7d3c98;
+    --piel: #f6d5b8;
+    --pelo: #6b4a2b;
+    --ropa: #5d8fd6;
+    --gota: #6fb7e8;
+    --radio: 10px;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--fondo); color: var(--texto); font: 14px system-ui, "Segoe UI", Arial, sans-serif; }
+button, input, select { font: inherit; }
+h2 { font-size: 15px; margin: 0; }
+[hidden] { display: none !important; }
+
+/* Cabecera y pestañas */
+.cabecera { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 24px 0; }
+.marca { display: flex; align-items: center; gap: 10px; }
+.marca svg { width: 34px; height: 34px; }
+.marca strong { display: block; font-size: 19px; }
+.marca span { color: var(--texto-suave); font-size: 12px; }
+.pestanas { display: flex; gap: 4px; }
+.pestana { border: 1px solid var(--borde); background: var(--tarjeta); color: var(--texto); padding: 7px 16px; border-radius: 8px; cursor: pointer; }
+.pestana.activa { background: var(--azul); border-color: var(--azul); color: #fff; }
+
+/* Barra de controles (como el boceto) */
+.barra { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 14px 24px; }
+.espacio { flex: 1; }
+button { border-radius: 8px; padding: 9px 16px; cursor: pointer; font-weight: 600; border: 1px solid var(--azul); }
+button:disabled { opacity: .45; cursor: not-allowed; }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px solid #86b8f4; outline-offset: 2px; }
+.primario { background: var(--verde); border-color: var(--verde); color: #fff; min-width: 130px; font-size: 15px; }
+.primario.peligro { background: var(--rojo); border-color: var(--rojo); }
+.secundario { background: var(--tarjeta); color: var(--texto); border-color: #c9d2df; }
+.ancho { width: 100%; }
+.chip { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border: 1px solid var(--borde); border-radius: 8px; background: var(--tarjeta); font-weight: 600; }
+.chip .punto { width: 10px; height: 10px; border-radius: 50%; background: #94a3b8; }
+.chip[data-estado="Conectado"] .punto { background: var(--verde); box-shadow: 0 0 0 4px #e2f2eb; }
+.chip[data-estado="Conectando"] .punto { background: var(--naranjo); }
+.chip[data-estado="Error"] .punto { background: var(--rojo); }
+.etiqueta-sim { color: var(--morado); border: 2px solid var(--morado); border-radius: 6px; padding: 4px 9px; font-weight: 800; letter-spacing: .06em; font-size: 12px; }
+
+.aviso, .banner-alerta { margin: 0 24px 12px; padding: 10px 14px; border-radius: 8px; }
+.aviso { background: #fef5e7; border-left: 4px solid var(--naranjo); }
+.banner-alerta { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: #fdecea; border-left: 4px solid var(--rojo); color: #7f1d1d; }
+.banner-alerta button { margin-left: auto; padding: 5px 12px; }
+
+/* Pestaña Principal */
+.contenido-pestana { padding: 0 24px 24px; }
+#principal { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 18px; align-items: start; }
+.graficos { display: grid; gap: 14px; min-width: 0; }
+.tarjeta { background: var(--tarjeta); border: 1px solid var(--borde); border-radius: var(--radio); padding: 14px 16px; }
+.grafico { padding-bottom: 8px; }
+.titulo-grafico { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; margin-bottom: 6px; }
+.titulo-grafico > span { color: var(--texto-suave); font-size: 12px; }
+.ventana-grafico { margin-left: auto; color: var(--texto-suave); font-size: 12px; }
+.ventana-grafico select { padding: 2px 4px; border-radius: 6px; border: 1px solid var(--borde); }
+canvas { display: block; width: 100%; height: 230px; }
+
+.lateral { display: grid; gap: 14px; }
+.resumen { display: grid; gap: 12px; }
+.fila { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.numero { font-size: 20px; font-variant-numeric: tabular-nums; }
+.entrada input { width: 64px; padding: 4px 6px; border: 1px solid #c9d2df; border-radius: 6px; text-align: right; font-weight: 600; }
+.nota { margin: 0; color: var(--texto-suave); font-size: 12px; line-height: 1.45; }
+#calibracion-texto[data-estado="PASS"] { color: var(--verde); font-weight: 600; }
+#calibracion-texto[data-estado="WARN"], #calibracion-texto[data-estado="error"] { color: #9a5b00; }
+progress { width: 100%; height: 8px; accent-color: var(--azul); }
+
+/* Muñeco */
+.muneco { margin: 0; text-align: center; }
+.muneco svg { width: 170px; height: auto; }
+.muneco figcaption { color: var(--texto-suave); font-weight: 600; }
+.muneco .cuerpo { fill: var(--ropa); }
+.muneco .cara { fill: var(--piel); }
+.muneco .pelo { fill: var(--pelo); }
+.muneco .ojos circle { fill: var(--texto); }
+.muneco .ojos path, .muneco .boca { fill: none; stroke: var(--texto); stroke-width: 3; stroke-linecap: round; }
+.muneco .gotas path { fill: var(--gota); }
+.muneco .boca, .muneco .ojos-cansados, .muneco .gotas, .muneco .gota-cara { display: none; }
+#muneco[data-animo="apagado"] { opacity: .45; }
+#muneco[data-animo="apagado"] .boca-neutra,
+#muneco[data-animo="listo"] .boca-feliz,
+#muneco[data-animo="tranquilo"] .boca-feliz,
+#muneco[data-animo="cansado"] .boca-neutra,
+#muneco[data-animo="alerta"] .boca-triste { display: inline; }
+#muneco[data-animo="cansado"] .gotas,
+#muneco[data-animo="alerta"] .gotas { display: inline; }
+#muneco[data-animo="alerta"] .gota-cara { display: inline; }
+#muneco[data-animo="alerta"] .ojos-abiertos { display: none; }
+#muneco[data-animo="alerta"] .ojos-cansados { display: inline; }
+#muneco[data-animo="alerta"] + figcaption { color: var(--rojo); }
+
+/* Pestaña Detalles */
+.detalles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start; }
+.ancho-completo { grid-column: 1 / -1; }
+.detalles canvas { height: 190px; }
+.detalles .tarjeta h2 { margin-bottom: 8px; }
+.panel-texto { margin: 0; padding: 10px; background: #f7f9fc; border: 1px solid var(--borde); border-radius: 6px; font: 11.5px/1.4 ui-monospace, Consolas, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 360px; overflow: auto; }
+.mensajes { max-height: 200px; }
+.archivos { margin: 0 0 8px; padding-left: 18px; font-size: 12px; overflow-wrap: anywhere; }
+code { font-size: 11px; overflow-wrap: anywhere; }
+.botones { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+
+/* Ventana de conexión */
+dialog { border: none; border-radius: 12px; padding: 0; width: min(460px, 92vw); box-shadow: 0 18px 50px rgba(0, 0, 0, .25); }
+dialog::backdrop { background: rgba(28, 44, 64, .45); }
+.formulario { display: grid; gap: 10px; padding: 20px 22px; }
+.formulario label { font-weight: 600; font-size: 13px; }
+.formulario select { width: 100%; padding: 7px; border: 1px solid #c9d2df; border-radius: 6px; }
+.opciones-fuente { display: flex; gap: 16px; border: none; padding: 0; margin: 0; }
+.opciones-fuente label { font-weight: 500; }
+#opciones-bitalino, #opciones-simulacion { display: grid; gap: 6px; }
+.fila-controles { display: flex; gap: 8px; }
+.fila-controles select { flex: 1; }
+.botones.abajo { justify-content: space-between; border-top: 1px solid var(--borde); padding-top: 12px; }
+
+@media (max-width: 860px) {
+    #principal { grid-template-columns: 1fr; }
+    .lateral { grid-template-columns: 1fr 1fr; }
+    .detalles { grid-template-columns: 1fr; }
+}
